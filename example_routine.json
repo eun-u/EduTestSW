@@ -1,0 +1,23 @@
+[
+  {
+    "step": "homepage_test",
+    "assessment": "performance",
+    "target": "https://www.naver.com"
+  },
+  {
+    "step": "w3school_test",
+    "assessment": "performance",
+    "target": "https://www.w3schools.com"
+  },
+
+  {
+    "step": "check_naver_home",
+    "assessment": "usability",
+    "target": "https://www.naver.com",
+    "params": {
+      "check_selector": "#NM_set_home_btn"
+    }
+  }
+]
+
+
