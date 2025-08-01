@@ -1,0 +1,17 @@
+# HTTP 요청 처리용
+requests
+
+# HTML 파싱용
+beautifulsoup4
+
+# Playwright 브라우저 자동화
+playwright
+
+# 코드 복잡도 정적 분석용
+radon
+
+# 루틴 JSON 처리 및 경로 관리 (내장 라이브러리지만 명시하면 좋음)
+json5
+
+# 개발 환경 일관성용 (선택)
+python-dotenv
