@@ -30,6 +30,7 @@ playwright install
 
 ```bash
 python run_routine.py
+```
 
 ---
 
