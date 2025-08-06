@@ -2,6 +2,14 @@
 # 1 from assessments import performance # 이 줄을 아래와 같이 수정!
 from assessments import performance
 from assessments import usability # usability.py가 있다면 함께 임포트
+from assessments import functional, reliability, security
+
+assessments_map = { 
+    "functional": functional,
+    "reliability": reliability,
+    "performance": performance,
+    "security": security
+}
 
 
 def run_routine(routine, driver):
@@ -13,3 +21,4 @@ def run_routine(routine, driver):
             usability.check(driver, step)
         else:
             print(f"[SKIP] 지원하지 않는 assessment: {assessment}")
+
