@@ -12,7 +12,7 @@
 python -m venv venv
 
 # Windows
-venv\Scripts\activate
+venv/Scripts/activate
 
 # macOS/Linux
 source venv/bin/activate
@@ -23,7 +23,8 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
-playwright install
+npm install playwright
+npx install playwright
 ---
 
 ## ▶️ 실행 방법
