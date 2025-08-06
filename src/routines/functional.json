@@ -1,0 +1,12 @@
+{
+  "name": "기능성 검사 - 로그인 버튼 표시 확인",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "functional",
+      "url": "https://www.w3schools.com/howto/howto_css_login_form.asp",
+      "element": "button",
+      "expected_text": "Login"
+    }
+  ]
+}

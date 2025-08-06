@@ -16,7 +16,8 @@ from core.driver_playwright import PlaywrightDriver # Playwright 드라이버
 
 if __name__ == "__main__":
     # example_routine.json 파일 파싱
-    routine = parse_routine("example_routine.json")
+    routine = parse_routine("src/routines/functional.json")
+
 
     # 사용할 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
