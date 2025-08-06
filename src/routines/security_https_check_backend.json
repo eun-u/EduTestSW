@@ -1,0 +1,11 @@
+{
+  "name": "Security - HTTPS 적용 확인",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "https_check",
+      "url": "https://naver.com"
+    }
+  ]
+}
