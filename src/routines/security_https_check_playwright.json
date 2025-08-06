@@ -1,0 +1,11 @@
+{
+  "name": "Security - HTTPS 적용 확인",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "https_check",
+      "page": "https://naver.com"
+    }
+  ]
+}
