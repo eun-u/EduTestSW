@@ -1,0 +1,11 @@
+{
+  "name": "Security - 파일 암호화 저장 확인",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "file_encryption_check",
+      "file_path": "uploads/encrypted_sample.txt"
+    }
+  ]
+}
