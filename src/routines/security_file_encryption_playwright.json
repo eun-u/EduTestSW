@@ -1,0 +1,13 @@
+{
+  "name": "Security - 파일 암호화 저장 확인",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "file_encryption_check",
+      "page": "https://easyupload.io",
+      "upload_selector": "input[type='file']",
+      "file_path": "uploads/encrypted_sample.txt"
+    }
+  ]
+}
