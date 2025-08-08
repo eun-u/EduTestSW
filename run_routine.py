@@ -2,24 +2,25 @@
 import os
 import sys
 
-# 프로젝트 루트 (EduTest)의 'src' 디렉토리를 Python 모듈 검색 경로에 추가합니다.
-# 이렇게 하면 'src'를 기준으로 'core'나 'assessments'와 같은 패키지를 찾을 수 있습니다.
-# 이 설정은 'from core.parser import ...' 와 같은 임포트 구문과 일치합니다.
+# ✅ 먼저 src를 모듈 경로에 넣고
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-
-# 필요한 모듈들을 임포트합니다.
+# ✅ 그 다음에 core/assessments 임포트
 from core.parser import parse_routine
 from core.runner import run_routine
-from core.driver_backend import BackendDriver # 목업 드라이버
-from core.driver_playwright import PlaywrightDriver # Playwright 드라이버
+from core.driver_backend import BackendDriver
+from core.driver_playwright import PlaywrightDriver
+
 
 if __name__ == "__main__":
-    # example_routine.json 파일 파싱
-    routine = parse_routine("src/routines/functional.json")
+    # 1) JSON 로드
+    try:
+        routine = parse_routine("src/routines/functional.json")
+    except Exception as e:
+        print(f"[ERROR] 루틴 로딩 실패: {e}")
+        sys.exit(1)
 
-
-    # 사용할 드라이버 선택
+    # 2) 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
     print("1. BackendDriver (가상 드라이버 - 콘솔 출력)")
     print("2. PlaywrightDriver (실제 웹 브라우저 제어)")
@@ -38,17 +39,15 @@ if __name__ == "__main__":
         else:
             print("잘못된 입력입니다. 1 또는 2를 입력해주세요.")
 
-    # 선택된 드라이버로 루틴 실행
+    # 3) 실행
     if driver:
         try:
             run_routine(routine, driver)
         finally:
-            # 드라이버 사용이 끝난 후 반드시 종료 메서드를 호출합니다.
-            # PlaywrightDriver는 브라우저를 닫고 세션을 종료해야 합니다.
-            # BackendDriver도 일관성을 위해 run 메서드를 호출합니다.
-            if hasattr(driver, 'run') and callable(driver.run):
+            # 드라이버 종료 (있으면)
+            if hasattr(driver, "run") and callable(driver.run):
                 driver.run()
+            elif hasattr(driver, "close") and callable(driver.close):
+                driver.close()
             else:
-                print("경고: 선택된 드라이버에 'run' 메서드가 없습니다.")
-    else:
-        print("드라이버 선택에 실패했습니다. 프로그램을 종료합니다.")
+                print("경고: 선택된 드라이버에 종료 메서드가 없습니다.")

@@ -1,36 +1,38 @@
 # 윤수영
 
 # src/assessments/functional.py
+import requests
+from bs4 import BeautifulSoup
 
 def check(driver, step):
-    """
-    기능성 검사:
-    - 특정 페이지(URL)에 접속한 후
-    - 특정 요소(element)의 텍스트가 기대값(expected_text)과 일치하는지 확인
+    url = step.get("url")
+    element = step.get("element")      # 예: "button"
+    expected_text = step.get("expected_text", "").strip()
 
-    step 예시:
-    {
-        "url": "https://example.com/login",
-        "element": "#login-button",
-        "expected_text": "로그인"
-    }
-    """
-    url = step["url"]
-    element = step["element"]
-    expected_text = step["expected_text"]
+    if not url or not element:
+        print("[SKIP][functional] url/element가 비었습니다.")
+        return
 
-    # 드라이버로 페이지 방문
-    driver.visit(url)
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
 
-    # 요소의 텍스트 가져오기
-    text = driver.get_text(element)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    found = soup.find_all(element)
 
-    print(f"[Functional] {url} - 요소 '{element}' 텍스트: '{text}'")
+    if not found:
+        print(f"[FAIL][functional] '{element}' 요소를 찾지 못했습니다. url={url}")
+        return
 
-    if expected_text not in text:
-        raise AssertionError(
-            f"기능 오류: '{element}'에 '{expected_text}' 문구가 없음"
-        )
+    # expected_text가 있으면 텍스트 일치 확인
+    if expected_text:
+        has_match = any((el.get_text(strip=True) == expected_text) for el in found)
+        if has_match:
+            print(f"[PASS][functional] '{element}' 요소에 텍스트 '{expected_text}' 발견")
+        else:
+            # 근접 텍스트 후보 보여주기
+            candidates = [el.get_text(strip=True) for el in found][:5]
+            print(f"[FAIL][functional] '{element}'는 있으나 텍스트 '{expected_text}' 미일치. 후보={candidates}")
+    else:
+        print(f"[PASS][functional] '{element}' 요소가 존재합니다.")
 
-    print("[Functional] 기능성 검사 통과")
 

@@ -1,0 +1,28 @@
+{
+  "name": "신뢰성 검사 - 로컬 부하 & 복구",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "reliability",
+      "mode": "stress",
+      "target_url": "http://127.0.0.1:8000/api/login",
+      "method": "POST",
+      "headers": { "Content-Type": "application/json" },
+      "payload": { "username": "user", "password": "pass" },
+      "timeout_ms": 2000,
+      "concurrency": 30,
+      "rps": 120,
+      "duration_sec": 20,
+      "warmup_sec": 2,
+      "success_statuses": [200],
+      "sla_ms_p95": 800,
+      "max_error_rate": 0.05,
+      "recovery": {
+        "health_url": "http://127.0.0.1:8000/health",
+        "poll_interval_sec": 2,
+        "recovery_sla_ms": 300,
+        "max_recovery_sec": 60
+      }
+    }
+  ]
+}
