@@ -2,8 +2,10 @@
 ========== 보안성 Security ==========
 
 | 기밀성 | Confidentiality |
-- check_https_certificate() : https 통신 적용 확인
-- file_encryption() : 파일 암호화 저장 여부 확인
+- check_https_certificate : https 통신 적용 확인
+- check_file_encryption_static : 파일 암호화 저장 여부 확인
+                                 (llm 프롬프트 기반 정적 코드 리뷰)
++ print_https_result : https 인증서 검사 결과 출력
 
 | 무결성 | Integrity |
 - hash_integrity :
@@ -17,65 +19,158 @@
 
 ====================================
 """
-import requests
-from . import security_confidentiality
+# ---------------------------------------------------------------------
+# 모듈 임포트
+# ---------------------------------------------------------------------
+import ssl
+import socket
+from urllib.parse import urlparse
+import datetime
+import os
+from typing import Dict, Any
+
+from src.llm_clients.file_encryption_client import analyze_code_for_encryption
 
 
+# ---------------------------------------------------------------------
+# 엔트리 포인트: 보안 검사 라우팅
+# ---------------------------------------------------------------------
 def check(driver, step):
     assessment_type = step["type"]
     
     if assessment_type == "check_https_certificate":
         url = step.get("url")
         if not url:
-            raise ValueError("[SECURITY] 'url' 항목이 누락되었습니다.")
-        result = security_confidentiality.check_https_certificate(url)
-        security_confidentiality.print_https_result(result)
+            raise ValueError("[SECURITY > CONFIDENTIALITY] 'url' 항목이 누락되었습니다.")
+        result = check_https_certificate(url)
+        print_https_result(result)
     
-        '''elif assessment_type == "file_encryption_check":
-        check_file_encryption(step, driver)'''
+    elif assessment_type == "check_file_encryption_static":
+        check_file_encryption_static(step, driver)
+
     else:
         raise ValueError(f"[SECURITY] 알 수 없는 검사 유형: {assessment_type}")
     
 
-"""
-def check_file_encryption(step, driver):
-    '''
-    - 업로드된 파일이 암호화된 상태로 저장되었는지 확인하는 함수
-    - 파일의 일부를 읽었을 때 평문 ASCII 비율이 낮았을 때 암호화된 상태로 판단
-    - 평문 ASCII 비율이 높으면 암호화 안 된 것으로 판단
-    '''
-    file_path = step["file_path"]
-    if not file_path:
-        raise ValueError("file_path 필드가 없습니다.")
+# ---------------------------------------------------------------------
+# 기밀성: HTTPS 인증서 검사
+# ---------------------------------------------------------------------
+def check_https_certificate(url: str) -> dict:
+    """
+    HTTPS 통신 적용 여부를 검사하는 함수
+    - TLS 인증서 유효성과 만료일을 확인함
+    - 인증서 발급자 정보를 반환함
+
+    Args:
+        url (str): 검사할 대상 시스템의 URL (예: https://example.com)
+
+    Returns:
+        dict: HTTPS 적용 여부, 인증서 유효성, 발급자 정보 등이 포함된 결과 딕셔너리
+    """
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    port = 443  # https 기본 포트
     
-    # playwright인 경우
-    if hasattr(driver, "page"):
-        upload_selector = step["upload_selector"]
-        if not upload_selector:
-            raise ValueError("upload_selector 필드가 없습니다.")
-        driver.page.set_input_files(step["upload_selector"], file_path)
-        print(f"[SECURITY > CONFIDENTIALITY] 파일 업로드 완료: {file_path}")
-    
-    
-    print(f"[SECURITY > CONFIDENTIALITY] 파일 암호화 확인 대상: {file_path}")
+    context = ssl.create_default_context()
     
     try:
-        with open(file_path, 'rb') as f:
-            content = f.read(200)
-            if not content:
-                print("[SECURITY > CONFIDENTIALITY] 파일 내용이 비어 있습니다.")
-                return
-            
-            ascii_cnt = sum(9 == b or 10 == b or 13 == b or 32 <= b <= 126 for b in content)
-            ascii_ratio = ascii_cnt / len(content)
-            
-            print(f"[DEBUG] ASCII 문자 비율: {ascii_ratio:.2f}")
-            
-            if ascii_ratio >= 0.95:
-                print("[SECURITY > CONFIDENTIALITY] 암호화되지 않은 파일입니다.")
-            else:
-                print("[SECURITY > CONFIDENTIALITY] 암호화된 파일입니다.")
-    except FileNotFoundError:
-        raise AssertionError(f"[SECURITY > CONFIDENTIALITY] 파일이 존재하지 않습니다: {file_path}")
+        with socket.create_connection((hostname, port), timeout=5) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                cert = ssock.getpeercert()
+                valid_from = cert["notBefore"]
+                valid_to = cert["notAfter"]
+
+                expire_date = datetime.datetime.strptime(valid_to, '%b %d %H:%M:%S %Y %Z')
+                is_valid = expire_date > datetime.datetime.now()
+
+                return {
+                    "https_supported": True,
+                    "issuer": cert.get("issuer", "N/A"),
+                    "valid_from": valid_from,
+                    "valid_to": valid_to,
+                    "is_valid": is_valid,
+                }
+
     except Exception as e:
-        raise AssertionError(f"[SECURITY > CONFIDENTIALITY] 파일 검사 중 오류 발생: {e}")"""
+        return {
+            "https_supported": False,
+            "error": str(e)
+        }
+
+
+# ---------------------------------------------------------------------
+# 기밀성: 파일 암호화 저장 여부 정적 분석(LLM)
+# ---------------------------------------------------------------------
+def check_file_encryption_static(step: Dict[str, Any], driver=None) -> Dict[str, Any]:
+    """
+    파일 업로드 처리 코드에서 서버 측 암호화 저장 여부를
+    LLM을 통해 정적 분석하는 함수
+
+    Args:
+        step (dict): 루틴 스텝 데이터 (code_path 포함)
+        driver (object): 현재 루틴에서 사용되는 드라이버 (사용되지 않음)
+
+    Returns:
+        dict: analyze_code_for_encryption 결과(printed도 함)
+    """
+    code_path = step.get("code_path")
+    if not code_path:
+        raise ValueError("[SECURITY > CONFIDENTIALITY] 'code_path'가 누락되었습니다.")
+    if not os.path.exists(code_path):
+        raise FileNotFoundError(f"[SECURITY > CONFIDENTIALITY] code_path가 존재하지 않습니다: {code_path}")
+
+    try:
+        with open(code_path, "r", encoding="utf-8") as f:
+            code = f.read()
+    except UnicodeDecodeError:
+        # 바이너리나 다른 인코딩일 수 있음 → latin-1로 재시도(깨져도 라인 패턴엔 영향 적음)
+        with open(code_path, "r", encoding="latin-1", errors="replace") as f:
+            code = f.read()
+
+    result = analyze_code_for_encryption(code)
+    
+    # ===== 원하는 출력 포맷 =====
+    verdict = "파일 암호화 됨" if result.get("encrypted") else "파일 암호화 되지 않음"
+    print("\n[파일 암호화 정적 분석 결과]")
+    print(f"- {verdict}")
+    # 근거 최소 표시
+    ev = result.get("evidence", [])
+    if ev:
+        first = ev[0]
+        print(f"- 근거: L{first.get('line')}: {first.get('text')}")
+    else:
+        print(f"- 근거: {result.get('reason', '근거 부족')}")
+    
+    return result
+
+
+# ---------------------------------------------------------------------
+# 출력 유틸: HTTPS 검사 결과 프린트
+# ---------------------------------------------------------------------
+def print_https_result(result: dict):
+    """
+    HTTPS 인증서 검사 결과를 읽기 쉽도록 출력하는 함수
+
+    Args:
+        result (dict): check_https_certificate() 함수의 반환 결과 딕셔너리.
+    """
+    print("\n[HTTPS 인증서 검사 결과]")
+    
+    supported = result.get("https_supported", False)
+    print(f"  • HTTPS 적용 여부     : {'적용됨' if supported else '미적용 또는 실패'}")
+
+    if not supported:
+        print(f"  • 오류 내용           : {result.get('error')}")
+        return
+
+    # 발급자 이름 정리
+    issuer_tuple = result.get("issuer", [])
+    issuer_parts = []
+    for entry in issuer_tuple:
+        for part in entry:
+            issuer_parts.append(part[1])
+    issuer_str = " / ".join(issuer_parts)
+
+    print(f"  • 인증서 발급자       : {issuer_str}")
+    print(f"  • 유효 기간           : {result.get('valid_from')} ~ {result.get('valid_to')}")
+    print(f"  • 인증서 유효성       : {'유효함' if result.get('is_valid') else '만료됨'}")
