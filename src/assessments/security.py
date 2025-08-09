@@ -2,10 +2,9 @@
 ========== 보안성 Security ==========
 
 | 기밀성 | Confidentiality |
-- check_https_certificate : https 통신 적용 확인
-- check_file_encryption_static : 파일 암호화 저장 여부 확인
-                                 (llm 프롬프트 기반 정적 코드 리뷰)
-+ print_https_result : https 인증서 검사 결과 출력
+- check_https_certificate :         https 통신 적용 확인
+- check_file_encryption_static :    파일 암호화 저장 여부 확인 (llm 프롬프트 기반 정적 코드 리뷰)
++ print_https_result :              https 인증서 검사 결과 출력
 
 | 무결성 | Integrity |
 - hash_integrity :
