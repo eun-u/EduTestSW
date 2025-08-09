@@ -1,7 +1,0 @@
-[Security - Confidentiality]
-
-This file is for testing the file encryption check function.
-This file is for testing the file encryption check function.
-This file is for testing the file encryption check function.
-This file is for testing the file encryption check function.
-This file is for testing the file encryption check function.

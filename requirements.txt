@@ -15,3 +15,9 @@ json5
 
 # 개발 환경 일관성용 (선택)
 python-dotenv
+
+# yujin 25.08.07 프롬프트 기반 코드 리뷰 시 사용 (최초 실행 시 시간 소요)
+transformers>=4.40.0
+accelerate>=0.30.0
+torch>=2.1.0
+pycryptodome
