@@ -9,6 +9,10 @@
 + summarize :                   응답 시간 통계 요약 (평균, p90, p95, 최소/최대 등)
 + judge :                       통계 결과와 기준값 비교 후 PASS/FAIL 판정
 + print_report :                응답 시간 측정 결과를 보기 좋게 출력
++ percentile :                  분위수 계산 유틸(단순 선형보간)
++ median :                      중앙값 계산(강건 통계용)
++ mad :                         중앙값 절대편차(Median Absolute Deviation) 계산
++ robust_zscores :              중앙값/MAD 기반 강건 z-score 계산
 
 | 자원활용성 | Resource Utilization |
 
@@ -36,8 +40,8 @@ def check(driver, step):
     elif assessment_type == "compare_processing_time":
         return compare_processing_time(step, driver)
     
-        '''elif assessment_type == "warn_timeout":
-        return warn_timeout(step, driver)'''
+    elif assessment_type == "warn_timeout":
+        return warn_timeout(step, driver)
     
     else:
         raise ValueError(f"[PERFORMANCE] 알 수 없는 검사 유형: {assessment_type}")
@@ -152,7 +156,7 @@ def robust_zscores(values: List[float]) -> Tuple[List[float], float, float]:
 
 
 # ---------------------------------------------------------------------
-# 주요 기능 응답 시간 측정 
+# 시간효율성: 주요 기능 응답 시간 측정 
 # ---------------------------------------------------------------------
 def report_response_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
     """
@@ -248,7 +252,8 @@ def report_response_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
             "threshold": thr,
             "rule": rule,
             "pass": ok,
-            "reason": reason
+            "reason": reason,
+            "samples": samples      # ← 추가: 개별 측정치(초) 리스트
         }
 
     print_report(results)
@@ -256,7 +261,7 @@ def report_response_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------
-# 보고서 기반 기능별 처리 시간 비교 + 이상치 탐지
+# 시간효율성: 보고서 기반 기능별 처리 시간 비교 + 이상치 탐지
 # ---------------------------------------------------------------------
 def compare_processing_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
     """
@@ -423,3 +428,97 @@ def compare_processing_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
         ]
     }
     return out
+
+
+# ---------------------------------------------------------------------
+# 시간효율성: 시간 초과 경고 탐지 - 기준 초과 비율(%) 리포트
+# ---------------------------------------------------------------------
+def warn_timeout(step: Dict[str, Any], driver) -> Dict[str, Any]:
+    """
+    시간 초과 경고 탐지
+    - 기준(threshold_s)을 초과한 샘플 비율을 계산해 경고
+    - 입력:
+        1) step["results"]: 기존 report_response_time() 결과를 재사용하거나,
+        2) 없으면 report_response_time(step, driver)로 즉시 측정
+    - 설정(step):
+        percent_limit: 초과 비율 경고 임계치(기본 10%)
+        metric: 보고서 표시에 참고로 보여줄 대표 통계(기본 avg)
+    """
+    percent_limit = float(step.get("percent_limit", 10.0))
+    metric = step.get("metric", "avg")
+
+    # 1) 결과 확보
+    base_results = step.get("results")
+    if not base_results:
+        base_results = report_response_time(step, driver)
+
+    if not isinstance(base_results, dict):
+        raise ValueError("[PERFORMANCE > TIMEOUT] 유효한 results가 아닙니다.")
+
+    # 2) 계산
+    rows = []
+    for name, data in base_results.items():
+        if not isinstance(data, dict) or "stats" not in data:
+            continue
+        stats = data["stats"]
+        samples = data.get("samples", [])
+        thr = data.get("threshold")
+
+        # threshold가 없다면 전체 기본값을 step에서 가져오거나 스킵
+        if thr is None:
+            # step 전역 thresholds의 '*'가 있으면 사용
+            thr = (step.get("thresholds", {}) or {}).get("*", None)
+        if thr is None:
+            # 기준이 없으면 의미 있는 초과율을 계산할 수 없음
+            rows.append({
+                "feature": name,
+                "metric_value": float(stats.get(metric, 0.0)),
+                "threshold": None,
+                "count": len(samples),
+                "over_count": 0,
+                "percent_over": 0.0,
+                "warn": False,
+                "reason": "no-threshold"
+            })
+            continue
+
+        # 초과 판단: sample > thr 또는 비유한값(Inf/NaN) → 초과로 간주
+        total = len(samples)
+        over = 0
+        for x in samples:
+            if not isinstance(x, (int, float)) or not math.isfinite(x):
+                over += 1
+            elif x > thr:
+                over += 1
+
+        percent_over = (over / total * 100.0) if total > 0 else 0.0
+        warn = percent_over >= percent_limit
+
+        rows.append({
+            "feature": name,
+            "metric_value": float(stats.get(metric, 0.0)),
+            "threshold": thr,
+            "count": total,
+            "over_count": over,
+            "percent_over": percent_over,
+            "warn": warn,
+            "reason": f"{percent_over:.1f}%≥{percent_limit:.1f}% → {'WARN' if warn else 'OK'}"
+        })
+
+    # 3) 출력
+    print("\n[PERFORMANCE > 시간 초과 경고 탐지]")
+    print(f"  - 기준 초과 경고 임계치: {percent_limit:.1f}%")
+    print("----------------------------------------------------------------")
+    for r in rows:
+        flag = "WARN" if r["warn"] else "OK"
+        thr_str = "None" if r["threshold"] is None else f"{r['threshold']:.3f}s"
+        print(f"{r['feature']:<30s} "
+              f"{r['metric_value']:>10.6f}s  "
+              f"(count={r['count']:>2d}, over={r['over_count']:>2d}, {r['percent_over']:>5.1f}%)  "
+              f"[{flag}]  thr={thr_str}  {r['reason']}")
+
+    return {
+        "percent_limit": percent_limit,
+        "metric": metric,
+        "rows": rows
+    }

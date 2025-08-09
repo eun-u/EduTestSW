@@ -1,0 +1,18 @@
+{
+  "name": "Performance - 시간 초과 경고 탐지",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "performance",
+      "type": "warn_timeout",
+      "targets": [
+        { "name": "GET/posts",    "method": "GET", "url": "https://jsonplaceholder.typicode.com/posts",    "timeout": 5 },
+        { "name": "GET/comments", "method": "GET", "url": "https://jsonplaceholder.typicode.com/comments", "timeout": 5 }
+      ],
+      "repeats": 10,
+      "warmups": 1,
+      "thresholds": { "*": 0.300 },
+      "percent_limit": 10.0
+    }
+  ]
+}

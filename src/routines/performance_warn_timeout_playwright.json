@@ -1,0 +1,18 @@
+{
+  "name": "Performance - 시간 초과 경고 탐지",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "performance",
+      "type": "warn_timeout",
+      "actions": [
+        { "name": "goto/posts", "op": "goto", "url": "https://jsonplaceholder.typicode.com/posts" },
+        { "name": "goto/comments", "op": "goto", "url": "https://jsonplaceholder.typicode.com/comments" }
+      ],
+      "repeats": 10,
+      "warmups": 1,
+      "thresholds": { "*": 0.05 },
+      "percent_limit": 10.0
+    }
+  ]
+}
