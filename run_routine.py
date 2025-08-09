@@ -19,7 +19,7 @@ if __name__ == "__main__":
     #routine = parse_routine("example_routine.json")
     
     # yujin 25.08.07 구현 내용 테스트용
-    routine = parse_routine("src/routines/security_check_file_encryption_static_backend.json")
+    routine = parse_routine("src/routines/performance_report_response_time_playwright.json")
 
     # 사용할 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
