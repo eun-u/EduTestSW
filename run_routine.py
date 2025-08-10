@@ -19,6 +19,11 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[ERROR] 루틴 로딩 실패: {e}")
         sys.exit(1)
+    # example_routine.json 파일 파싱
+    #routine = parse_routine("example_routine.json")
+    
+    # yujin 25.08.07 구현 내용 테스트용
+    routine = parse_routine("src/routines/performance_warn_timeout_playwright.json")
 
     # 2) 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
