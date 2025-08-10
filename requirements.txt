@@ -15,3 +15,8 @@ json5
 
 # 개발 환경 일관성용 (선택)
 python-dotenv
+
+# 테스트 서버
+fastapi
+uvicorn
+httpx
