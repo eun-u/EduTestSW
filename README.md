@@ -12,7 +12,11 @@
 python -m venv venv
 
 # Windows
+<<<<<<< HEAD
 venv\Scripts\activate
+=======
+venv/Scripts/activate
+>>>>>>> 1de53cc (feat : 서버 과부화 자동화, 모든 테스트 케이스 자동화 기능 추가)
 
 # macOS/Linux
 source venv/bin/activate
@@ -23,7 +27,12 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
+<<<<<<< HEAD
 playwright install
+=======
+npm install playwright
+npx playwright install
+>>>>>>> 1de53cc (feat : 서버 과부화 자동화, 모든 테스트 케이스 자동화 기능 추가)
 ---
 
 ## ▶️ 실행 방법
