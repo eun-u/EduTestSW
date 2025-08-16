@@ -1,9 +1,6 @@
 # src/core/runner.py
-<<<<<<< HEAD
-=======
 # -*- coding: utf-8 -*-
 
->>>>>>> 1de53cc (feat : 서버 과부화 자동화, 모든 테스트 케이스 자동화 기능 추가)
 from assessments import performance, usability, functional, reliability, security
 
 assessments_map = {
@@ -33,10 +30,7 @@ def run_routine(routine: dict, driver):
 
         try:
             handler.check(driver, step)
-<<<<<<< HEAD
-=======
         except AssertionError as e:
             print(f"[FAIL] step {idx} 검사 실패: {e}")
->>>>>>> 1de53cc (feat : 서버 과부화 자동화, 모든 테스트 케이스 자동화 기능 추가)
         except Exception as e:
             print(f"[ERROR] step {idx} 처리 중 예외 발생: {e}")

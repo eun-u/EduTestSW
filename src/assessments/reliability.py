@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# 윤수영
-=======
 # src/assessments/reliability.py
 import asyncio
 import time
@@ -193,4 +190,3 @@ def check(driver, step: Dict[str, Any]):
             print("[PASS][recovery] 헬스체크가 SLA 이내로 회복되었습니다.")
         elif rec.get("recovery_checked"):
             print("[FAIL][recovery] 설정된 시간 내 SLA 이내로 회복하지 못했습니다.")
->>>>>>> 1de53cc (feat : 서버 과부화 자동화, 모든 테스트 케이스 자동화 기능 추가)
