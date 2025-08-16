@@ -1,2 +1,7 @@
 # Python virtual environment
 venv/
+
+__pycache__/
+node_modules/
+logs/
+*.pyc
