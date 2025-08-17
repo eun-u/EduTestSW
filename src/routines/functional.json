@@ -1,12 +1,36 @@
 {
-  "name": "기능성 검사 - 로그인 버튼 표시 확인",
+  "name": "기능성 검사 - 폼 기반 주요 기능 확인",
   "driver": "backend",
   "steps": [
     {
       "assessment": "functional",
-      "url": "https://www.w3schools.com/howto/howto_css_login_form.asp",
-      "element": "button",
-      "expected_text": "Login"
+      "feature": "signup",
+      "url": "https://www.w3schools.com/howto/howto_css_signup_form.asp"
+    },
+    {
+      "assessment": "functional",
+      "feature": "register",
+      "url": "https://www.w3schools.com/howto/howto_css_signup_form.asp"
+    },
+    {
+      "assessment": "functional",
+      "feature": "checkout",
+      "url": "https://www.w3schools.com/howto/howto_css_checkout_form.asp"
+    },
+    {
+      "assessment": "functional",
+      "feature": "contact",
+      "url": "https://www.w3schools.com/howto/howto_css_contact_form.asp"
+    },
+    {
+      "assessment": "functional",
+      "feature": "social_login",
+      "url": "https://www.w3schools.com/howto/howto_css_contact_form.asp"
+    },
+    {
+      "assessment": "functional",
+      "feature": "newsletter",
+      "url": "https://www.w3schools.com/howto/howto_css_newsletter.asp"
     }
   ]
 }

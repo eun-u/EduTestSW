@@ -1,5 +1,5 @@
 {
-  "name": "신뢰성 검사 - 로컬 부하 & 복구",
+  "name": "신뢰성 검사 - 로컬 부하 & 복구 (리소스 모니터 포함)",
   "driver": "backend",
   "steps": [
     {
@@ -17,6 +17,16 @@
       "success_statuses": [200],
       "sla_ms_p95": 800,
       "max_error_rate": 0.05,
+
+      "monitor": {
+        "enabled": true,
+        "port": 8000,               
+        "name_contains": "uvicorn", 
+        "interval_ms": 500,         
+        "series_limit": 600         
+        
+      },
+
       "recovery": {
         "health_url": "http://127.0.0.1:8000/health",
         "poll_interval_sec": 2,
