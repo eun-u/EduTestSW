@@ -1,0 +1,60 @@
+{
+  "name": "LearningData - 학습 데이터 관리",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "learning_data",
+      "type": "history_presence",
+      "users": ["u1", "u2"],
+      "logs": [
+        { "user_id": "u1", "event_type": "start_course", "ts": "2025-08-16 10:00:00" },
+        { "user_id": "u1", "event_type": "progress",     "ts": "2025-08-16 10:40:00" },
+        { "user_id": "u2", "event_type": "start_course", "ts": "2025-08-16 09:00:00" },
+        { "user_id": "u2", "event_type": "progress",     "ts": "2025-08-16 09:30:00" }
+      ]
+    },
+    {
+      "assessment": "learning_data",
+      "type": "progress_completeness",
+      "freshness_days": 7,
+      "progress": [
+        { "user_id": "u1", "progress": 60, "last_updated": "2025-08-17 09:00:00" },
+        { "user_id": "u2", "progress": 80, "last_updated": "2025-08-16 13:45:00" }
+      ]
+    },
+    {
+      "assessment": "learning_data",
+      "type": "activity_log_adequacy",
+      "use_ai": true,
+      "required_events": ["start_course", "progress", "submit_assignment", "take_exam"],
+      "logs": [
+        { "user_id": "u1", "event_type": "start_course", "ts": "2025-08-16 10:00:00" },
+        { "user_id": "u1", "event_type": "progress",     "ts": "2025-08-16 10:40:00" },
+        { "user_id": "u1", "event_type": "submit_assignment", "ts": "2025-08-16 12:00:00" },
+        { "user_id": "u1", "event_type": "take_exam",    "ts": "2025-08-17 11:00:00" },
+
+        { "user_id": "u2", "event_type": "start_course", "ts": "2025-08-16 09:00:00" },
+        { "user_id": "u2", "event_type": "progress",     "ts": "2025-08-16 09:30:00" },
+        { "user_id": "u2", "event_type": "submit_assignment", "ts": "2025-08-16 13:20:00" },
+        { "user_id": "u2", "event_type": "take_exam",    "ts": "2025-08-17 10:30:00" }
+      ]
+    },
+    {
+      "assessment": "learning_data",
+      "type": "completion_rule_check",
+      "completion_rules": { "min_progress": 80, "require_assignment": true, "require_exam": true },
+      "progress": [
+        { "user_id": "u1", "progress": 90 },
+        { "user_id": "u2", "progress": 85 }
+      ],
+      "assignment": [
+        { "user_id": "u1", "submitted": true },
+        { "user_id": "u2", "submitted": true }
+      ],
+      "exam": [
+        { "user_id": "u1", "taken": true },
+        { "user_id": "u2", "taken": true }
+      ]
+    }
+  ]
+}
