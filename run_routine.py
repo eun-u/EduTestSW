@@ -15,7 +15,7 @@ from core.driver_playwright import PlaywrightDriver
 if __name__ == "__main__":
     # 1) JSON 로드
     try:
-        routine = parse_routine("src/routines/functional.json")
+        routine = parse_routine("src/routines/performance_backend.json")
     except Exception as e:
         print(f"[ERROR] 루틴 로딩 실패: {e}")
         sys.exit(1)
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     #routine = parse_routine("example_routine.json")
     
     # yujin 25.08.07 구현 내용 테스트용
-    routine = parse_routine("src/routines/performance_warn_timeout_playwright.json")
+    #routine = parse_routine("src/routines/EDU_test_design_backend.json")
 
     # 2) 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
