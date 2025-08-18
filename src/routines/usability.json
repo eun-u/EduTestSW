@@ -1,38 +1,58 @@
-{
-    "routine_name": "이러닝 시스템 사용성(Usability) 검증",
-    "description": "ISO 25010 기준에 따라 사용자의 효율성 및 만족도를 검증하는 루틴",
-    "steps": [
-        {
-            "step_id": 1,
-            "test_type": "ease_of_use",
-            "description": "이해용이성: 주요 탐색 버튼의 명확성 확인",
-            "url": "https://your-elearning-system.com/home"
-        },
-        {
-            "step_id": 2,
-            "test_type": "learnability",
-            "description": "학습성: 신규 사용자를 위한 도움말 기능 존재 여부 확인",
-            "url": "https://your-elearning-system.com/home"
-        },
-        {
-            "step_id": 3,
-            "test_type": "operability",
-            "description": "운영성: 주요 기능(강의 등록)의 조작 가능 여부 확인",
-            "url": "https://your-elearning-system.com/courses"
-        },
-        {
-            "step_id": 4,
-            "test_type": "error_protection",
-            "description": "사용자 오류 보호: 회원가입 시 비밀번호 확인 필드 존재 여부 확인",
-            "url": "https://your-elearning-system.com/signup",
-            "protection_type": "password_confirmation"
-        },
-        {
-            "step_id": 5,
-            "test_type": "error_protection",
-            "description": "사용자 오류 보호: 데이터 삭제 시 경고 팝업 존재 여부 확인",
-            "url": "https://your-elearning-system.com/user/profile",
-            "protection_type": "data_deletion"
-        }
-    ]
-}
+[
+    {
+        "name": "온라인 강의 사용성 테스트",
+        "driver": "playwright",
+        "steps": [
+            {
+                "assessment": "usability",
+                "test_type": "ease_of_use",
+                "url": "http://127.0.0.1:8000/",
+                "description": "이해용이성: UI의 직관성 및 명확성 검증"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "learnability",
+                "url": "http://127.0.0.1:8000/",
+                "description": "학습성: 새로운 사용자가 기능을 쉽게 배울 수 있는지 검증"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "operability",
+                "url": "http://127.0.0.1:8000/",
+                "description": "운영성: 사용자가 기능을 효과적으로 조작할 수 있는지 검증"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "error_protection",
+                "protection_type": "password_confirmation",
+                "url": "http://127.0.0.1:8000/signup",
+                "description": "사용자 오류 보호: 비밀번호 확인 필드 존재 검증"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "error_protection",
+                "protection_type": "data_deletion",
+                "url": "http://127.0.0.1:8000/settings",
+                "description": "사용자 오류 보호: 데이터 삭제 시 경고 팝업 검증"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "content_search",
+                "url": "http://127.0.0.1:8000/",
+                "description": "콘텐츠 탐색: 검색 기능이 직관적인지 검증"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "continue_watching",
+                "url": "http://127.0.0.1:8000/course/123",
+                "description": "이어보기 기능: 중간 종료 후 이어보기가 사용자의 흐름을 방해하지 않는지 확인"
+            },
+            {
+                "assessment": "usability",
+                "test_type": "report_issue",
+                "url": "http://127.0.0.1:8000/help",
+                "description": "불편사항 신고: 사용자가 불편사항을 쉽게 신고할 수 있는지 확인"
+            }
+        ]
+    }
+]

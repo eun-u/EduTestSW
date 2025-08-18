@@ -1,38 +1,54 @@
-{
-    "routine_name": "E-learning System Compatibility Test",
-    "description": "브라우저, OS 등 다양한 환경에서 시스템 호환성 검증",
-    "steps": [
-        {
-            "step_id": 1,
-            "test_type": "browser_compatibility",
-            "description": "Chrome 브라우저에서 로그인 기능 호환성 테스트",
-            "browser_name": "Chrome",
-            "url": "https://your-elearning-system.com/login",
-            "test_feature": "login_form"
-        },
-        {
-            "step_id": 2,
-            "test_type": "browser_compatibility",
-            "description": "Firefox 브라우저에서 로그인 기능 호환성 테스트",
-            "browser_name": "Firefox",
-            "url": "https://your-elearning-system.com/login",
-            "test_feature": "login_form"
-        },
-        {
-            "step_id": 3,
-            "test_type": "os_compatibility",
-            "description": "Windows 환경에서 동영상 재생 기능 호환성 테스트",
-            "os_name": "Windows 10",
-            "url": "https://your-elearning-system.com/course/123",
-            "test_feature": "video_playback"
-        },
-        {
-            "step_id": 4,
-            "test_type": "os_compatibility",
-            "description": "macOS 환경에서 UI 레이아웃 동일성 테스트",
-            "os_name": "macOS Monterey",
-            "url": "https://your-elearning-system.com/dashboard",
-            "test_feature": "ui_layout"
-        }
-    ]
-}
+[
+    {
+        "name": "온라인 강의 호환성 테스트",
+        "driver": "playwright",
+        "steps": [
+            {
+                "assessment": "compatibility",
+                "test_type": "browser_compatibility",
+                "browser_name": "Chrome",
+                "test_feature": "login_form",
+                "url": "http://127.0.0.1:8000/",
+                "description": "브라우저 호환성: 크롬에서 로그인 폼이 정상 작동하는지 확인"
+            },
+            {
+                "assessment": "compatibility",
+                "test_type": "os_compatibility",
+                "os_name": "Windows",
+                "test_feature": "video_playback",
+                "url": "http://127.0.0.1:8000/course/123",
+                "description": "OS 호환성: Windows에서 영상 재생이 정상적인지 확인"
+            },
+            {
+                "assessment": "compatibility",
+                "test_type": "loading_anxiety",
+                "url": "http://127.0.0.1:8000/loading-page",
+                "description": "로딩 불안: 느린 로딩 시 사용자 불안을 최소화하는 UI 검증"
+            },
+            {
+                "assessment": "compatibility",
+                "test_type": "mobile_ui",
+                "url": "http://127.0.0.1:8000/",
+                "description": "모바일 UI: 모바일 환경에서 버튼/텍스트 겹침 여부 확인"
+            },
+            {
+                "assessment": "compatibility",
+                "test_type": "quiz_notification",
+                "url": "http://127.0.0.1:8000/quiz-result",
+                "description": "알림 명확성: 퀴즈 결과 알림이 명확하고 방해되지 않는지 확인"
+            },
+            {
+                "assessment": "compatibility",
+                "test_type": "wcag_contrast",
+                "url": "http://127.0.0.1:8000/settings",
+                "description": "WCAG 대비: 글씨 크기와 대비가 기준을 충족하는지 확인"
+            },
+            {
+                "assessment": "compatibility",
+                "test_type": "subtitle_sync",
+                "url": "http://127.0.0.1:8000/course/123",
+                "description": "자막 동기화: 자막이 강의 오디오와 정확히 맞는지 확인"
+            }
+        ]
+    }
+]

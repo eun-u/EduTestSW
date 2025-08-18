@@ -1,12 +1,15 @@
 # src/assessments/usability.py
+
 import time
+import json
+import random
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.common.exceptions import WebDriverException, NoSuchElementException, ElementClickInterceptedException, NoAlertPresentException
 
 def check_ease_of_use(driver: WebDriver, url: str):
-    #이해용이성: UI의 직관성 및 명확성 검증
+    # 이해용이성: UI의 직관성 및 명확성 검증
     results = {"test_name": "이해용이성 테스트", "passed": False, "details": []}
     try:
         driver.get(url)
@@ -21,12 +24,10 @@ def check_ease_of_use(driver: WebDriver, url: str):
     except Exception as e:
         results["details"].append(f"예상치 못한 오류 발생: {e}")
         results["passed"] = False
-    finally:
-        if driver: driver.quit()
     return results
 
 def check_learnability(driver: WebDriver, url: str):
-    #새로운 사용자가 기능을 쉽게 배울 수 있는지 검증
+    # 사용자가 기능을 쉽게 배울 수 있는지 검증
     results = {"test_name": "학습성 테스트", "passed": False, "details": []}
     try:
         driver.get(url)
@@ -44,12 +45,10 @@ def check_learnability(driver: WebDriver, url: str):
     except Exception as e:
         results["details"].append(f"예상치 못한 오류 발생: {e}")
         results["passed"] = False
-    finally:
-        if driver: driver.quit()
     return results
 
 def check_operability(driver: WebDriver, url: str):
-    #사용자가 기능을 효과적으로 조작할 수 있는지 검증
+    # 사용자가 기능을 효과적으로 조작할 수 있는지 검증
     results = {"test_name": "운영성 테스트", "passed": False, "details": []}
     try:
         driver.get(url)
@@ -67,12 +66,10 @@ def check_operability(driver: WebDriver, url: str):
     except Exception as e:
         results["details"].append(f"예상치 못한 오류 발생: {e}")
         results["passed"] = False
-    finally:
-        if driver: driver.quit()
     return results
 
 def check_user_error_protection(driver: WebDriver, url: str, protection_type: str):
-    #적절한 보호 기능을 검증
+    # 적절한 사용자 오류 보호 기능을 검증
     results = {"test_name": f"사용자 오류 보호 테스트 ({protection_type})", "passed": False, "details": ""}
     
     try:
@@ -80,7 +77,6 @@ def check_user_error_protection(driver: WebDriver, url: str, protection_type: st
         time.sleep(3)
         
         if protection_type == "password_confirmation":
-            # 회원가입 시 비밀번호 확인 필드 존재 여부 확인
             try:
                 confirm_password = driver.find_element(By.ID, "confirm_password")
                 if confirm_password.is_displayed():
@@ -92,9 +88,8 @@ def check_user_error_protection(driver: WebDriver, url: str, protection_type: st
             except NoSuchElementException:
                 results["passed"] = False
                 results["details"] = "비밀번호 확인 필드를 찾을 수 없어 사용자 오류 보호가 부족합니다."
-
+        
         elif protection_type == "data_deletion":
-            # 데이터 삭제 시 경고 팝업 존재 여부 확인
             try:
                 delete_button = driver.find_element(By.CSS_SELECTOR, "button.delete-data-btn")
                 delete_button.click()
@@ -110,7 +105,7 @@ def check_user_error_protection(driver: WebDriver, url: str, protection_type: st
                 alert.dismiss()
             except NoSuchElementException:
                 results["passed"] = False
-                results["details"] = "데이터 삭제 버튼을 찾을 수 없어 테스트를 진행할 수 없습니다."
+                results["details"] = "데이터 삭제 버튼을 찾을 수 없습니다."
             except NoAlertPresentException:
                 results["passed"] = False
                 results["details"] = "데이터 삭제 버튼 클릭 후 경고 팝업이 표시되지 않습니다."
@@ -122,22 +117,81 @@ def check_user_error_protection(driver: WebDriver, url: str, protection_type: st
     except Exception as e:
         results["passed"] = False
         results["details"] = f"예상치 못한 오류 발생: {e}"
-    finally:
-        if driver: driver.quit()
+    return results
+
+def check_content_search(driver: WebDriver, url: str):
+    # 콘텐츠 탐색 직관성 테스트
+    results = {"test_name": "콘텐츠 탐색 테스트", "passed": False, "details": []}
+    try:
+        driver.get(url)
+        time.sleep(3)
+        search_box = driver.find_element(By.CSS_SELECTOR, "input.search-box")
+        search_box.send_keys("Python")
+        time.sleep(1) 
+        
+        autocomplete_results = driver.find_elements(By.CSS_SELECTOR, ".autocomplete-result")
+        if autocomplete_results:
+            results["details"].append("검색어 입력 시 자동 완성 기능이 정상적으로 표시됩니다.")
+            results["passed"] = True
+        else:
+            results["details"].append("자동 완성 결과를 찾을 수 없어 직관성이 부족합니다.")
+            results["passed"] = False
+    except NoSuchElementException:
+        results["details"].append("검색창 요소를 찾을 수 없습니다.")
+        results["passed"] = False
+    except Exception as e:
+        results["details"].append(f"예상치 못한 오류 발생: {e}")
+        results["passed"] = False
+    return results
+
+def check_continue_watching(driver: WebDriver, url: str):
+    # 중간 종료 후 이어보기 기능 검증
+    results = {"test_name": "이어보기 테스트", "passed": False, "details": []}
+    try:
+        # 동영상 재생 페이지로 이동 시뮬레이션
+        driver.get(url)
+        time.sleep(5)
+        
+        resume_message = driver.find_element(By.CSS_SELECTOR, ".resume-watching-message, button.resume-btn")
+        if resume_message.is_displayed():
+            results["details"].append("페이지 재진입 시 이어보기 관련 메시지가 표시됩니다.")
+            results["passed"] = True
+        else:
+            results["details"].append("페이지 재진입 시 이어보기 관련 메시지를 찾을 수 없습니다.")
+            results["passed"] = False
+            
+    except NoSuchElementException:
+        results["details"].append("이어보기 관련 요소를 찾을 수 없습니다.")
+        results["passed"] = False
+    except Exception as e:
+        results["details"].append(f"예상치 못한 오류 발생: {e}")
+        results["passed"] = False
     return results
 
 def check(driver: WebDriver, step: dict):
-    #메인 함수
+    # 메인 함수
     test_type = step.get("test_type")
+    url = step.get("url")
 
-    if test_type == "ease_of_use":
-        return check_ease_of_use(driver, step.get("url"))
-    elif test_type == "learnability":
-        return check_learnability(driver, step.get("url"))
-    elif test_type == "operability":
-        return check_operability(driver, step.get("url"))
-    elif test_type == "error_protection":
-        protection_type = step.get("protection_type")
-        return check_user_error_protection(driver, step.get("url"), protection_type)
-    else:
-        return {"test_name": "사용성 테스트", "passed": False, "details": f"알 수 없는 테스트 유형: {test_type}"}
+    # 모든 테스트 함수가 driver를 생성하고 닫도록 수정
+    driver_instance = webdriver.Chrome()
+
+    try:
+        if test_type == "ease_of_use":
+            return check_ease_of_use(driver_instance, url)
+        elif test_type == "learnability":
+            return check_learnability(driver_instance, url)
+        elif test_type == "operability":
+            return check_operability(driver_instance, url)
+        elif test_type == "error_protection":
+            protection_type = step.get("protection_type")
+            return check_user_error_protection(driver_instance, url, protection_type)
+        elif test_type == "content_search":
+            return check_content_search(driver_instance, url)
+        elif test_type == "continue_watching":
+            return check_continue_watching(driver_instance, url)
+        else:
+            return {"test_name": "사용성 테스트", "passed": False, "details": f"알 수 없는 테스트 유형: {test_type}"}
+    finally:
+        if driver_instance:
+            driver_instance.quit()
