@@ -1,0 +1,38 @@
+{
+    "routine_name": "E-learning System Compatibility Test",
+    "description": "브라우저, OS 등 다양한 환경에서 시스템 호환성 검증",
+    "steps": [
+        {
+            "step_id": 1,
+            "test_type": "browser_compatibility",
+            "description": "Chrome 브라우저에서 로그인 기능 호환성 테스트",
+            "browser_name": "Chrome",
+            "url": "https://your-elearning-system.com/login",
+            "test_feature": "login_form"
+        },
+        {
+            "step_id": 2,
+            "test_type": "browser_compatibility",
+            "description": "Firefox 브라우저에서 로그인 기능 호환성 테스트",
+            "browser_name": "Firefox",
+            "url": "https://your-elearning-system.com/login",
+            "test_feature": "login_form"
+        },
+        {
+            "step_id": 3,
+            "test_type": "os_compatibility",
+            "description": "Windows 환경에서 동영상 재생 기능 호환성 테스트",
+            "os_name": "Windows 10",
+            "url": "https://your-elearning-system.com/course/123",
+            "test_feature": "video_playback"
+        },
+        {
+            "step_id": 4,
+            "test_type": "os_compatibility",
+            "description": "macOS 환경에서 UI 레이아웃 동일성 테스트",
+            "os_name": "macOS Monterey",
+            "url": "https://your-elearning-system.com/dashboard",
+            "test_feature": "ui_layout"
+        }
+    ]
+}

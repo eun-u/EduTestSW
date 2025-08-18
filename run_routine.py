@@ -223,7 +223,7 @@ def select_routines_cli(all_target: List[Dict[str, Any]], args) -> List[Dict[str
 # 메인
 # -------------------------------
 if __name__ == "__main__":
-<<<<<<< HEAD
+
     # CLI 인자 (비대화형 선택 가능)
     parser = argparse.ArgumentParser(description="Run routines with driver/test selection.")
     parser.add_argument("--run", choices=["all"], help="모든 테스트 실행")
@@ -235,19 +235,7 @@ if __name__ == "__main__":
     # 1) 모든 루틴 로드
     routines = load_all_from_dir("src/routines")
     print(f"[INFO] 로드된 루틴 수: {len(routines)}")
-=======
-    # 1) JSON 로드
-    try:
-        routine = parse_routine("src/routines/performance_backend.json")
-    except Exception as e:
-        print(f"[ERROR] 루틴 로딩 실패: {e}")
-        sys.exit(1)
-    # example_routine.json 파일 파싱
-    #routine = parse_routine("example_routine.json")
-    
-    # yujin 25.08.07 구현 내용 테스트용
-    #routine = parse_routine("src/routines/EDU_test_design_backend.json")
->>>>>>> yujin
+
 
     # 2) 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
