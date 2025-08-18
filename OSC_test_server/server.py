@@ -1,85 +1,131 @@
-#서버 실행 명령어
-#python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
-
-
+# 서버 실행 명령어
+# python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 
 # server.py
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query, Depends, status
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from typing import Dict
 import time
 import random
+from jose import jwt, JWTError
 
-app = FastAPI(title="Local Reliability Test Server", version="1.0.0")
+app = FastAPI(title="Reliability & Auth Test Server", version="2.0.0")
 
-# 인메모리 상태 (과부하/지연/실패율 시뮬레이션)
+# --- JWT 설정 ---
+# 실제 환경에서는 환경 변수로 관리해야 합니다.
+SECRET_KEY = "super-secret-key"
+ALGORITHM = "HS256"
+
+# 토큰을 가져올 의존성 객체
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
+
+# --- 서버 상태 (신뢰성 테스트용) ---
 STATE: Dict[str, float | bool] = {
-    "overloaded": False,      # True면 장애(복구 전)
-    "failure_rate": 0.0,      # 0.0~1.0, 요청 실패 확률
-    "extra_latency_ms": 0.0,  # 모든 요청에 추가 지연(ms)
+    "overloaded": False,
+    "failure_rate": 0.0,
+    "extra_latency_ms": 0.0,
 }
 
+# --- 데이터 모델 ---
 class LoginReq(BaseModel):
     username: str
     password: str
 
-@app.get("/health")
-def health():
-    """
-    헬스체크 엔드포인트.
-    과부하 상태에선 일부러 느리거나 'degraded'를 반환해서 복구 테스트에 활용.
-    """
-    if STATE["overloaded"]:
-        time.sleep(0.3)  # 복구 SLA 검사용(300ms)
-        return {"status": "degraded", "latency_ms": 300}
-    return {"status": "ok"}
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
-@app.post("/api/login")
-def login(req: LoginReq):
-    """
-    간단한 로그인 API (토큰 발급 흉내)
-    - extra_latency_ms: 모든 요청에 지연 주입
-    - overloaded/failure_rate: 장애 시 실패 확률적으로 반환
-    """
-    # 전역 지연 주입
+# --- 유틸리티 함수 ---
+def get_user(username: str):
+    """더미 사용자 정보"""
+    if username == "admin":
+        return {"username": "admin", "role": "admin"}
+    if username == "user":
+        return {"username": "user", "role": "user"}
+    return None
+
+def apply_chaos():
+    """혼란 주입 (지연, 실패)"""
     extra = float(STATE["extra_latency_ms"])
     if extra > 0:
         time.sleep(extra / 1000.0)
+    
+    if STATE["overloaded"] and random.random() < max(0.2, float(STATE["failure_rate"])):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="temporary overload")
 
-    # 장애/실패율 주입
+def create_jwt_token(data: dict):
+    """JWT 토큰 생성"""
+    to_encode = data.copy()
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user_role(token: str = Depends(oauth2_scheme)):
+    """JWT 토큰을 검증하고 사용자 역할을 추출"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        role: str = payload.get("role")
+        if role is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+        return role
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+
+def get_admin_user(role: str = Depends(get_current_user_role)):
+    """관리자 권한 확인"""
+    if role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not an administrator")
+    return role
+
+# --- 엔드포인트 ---
+@app.get("/health")
+def health():
+    """헬스체크"""
     if STATE["overloaded"]:
-        fail_p = max(0.2, float(STATE["failure_rate"]))  # 최소 20%는 실패하게
-        if random.random() < fail_p:
-            return {"ok": False, "error": "temporary overload"}
+        time.sleep(0.3)
+        return {"status": "degraded"}
+    return {"status": "ok"}
 
-    # 아주 단순한 검증 로직
-    if req.username == "user" and req.password == "pass":
-        return {"ok": True, "token": "dummy-token"}
-    return {"ok": False, "error": "invalid credentials"}
+@app.post("/api/login", response_model=Token)
+def login(req: LoginReq):
+    """
+    로그인 API. 사용자 정보에 따라 JWT 토큰 발급.
+    - `admin`: 관리자 권한 토큰
+    - `user`: 일반 사용자 권한 토큰
+    """
+    user = get_user(req.username)
+    if not user or req.password != "pass":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    
+    token_data = {"sub": user["username"], "role": user["role"]}
+    access_token = create_jwt_token(token_data)
+    
+    return {"access_token": access_token}
 
 @app.get("/api/echo")
 def echo(msg: str = "hello"):
     """
-    가벼운 핑/에코 엔드포인트. 부하 테스트 대상 다양화용.
+    가벼운 에코 엔드포인트 (신뢰성 테스트용).
     """
-    extra = float(STATE["extra_latency_ms"])
-    if extra > 0:
-        time.sleep(extra / 1000.0)
-    if STATE["overloaded"] and random.random() < max(0.2, float(STATE["failure_rate"])):
-        return {"ok": False, "error": "temporary overload"}
+    apply_chaos()
     return {"ok": True, "msg": msg}
 
-# -------- Admin (테스트 제어용) --------
+@app.get("/api/user_data")
+def user_data(role: str = Depends(get_current_user_role)):
+    """
+    로그인한 사용자만 접근 가능한 엔드포인트.
+    """
+    return {"ok": True, "msg": f"Hello, your role is '{role}'"}
 
+# -------- 관리자 전용 (권한 테스트 대상) --------
 @app.post("/admin/toggle_overload")
 def toggle_overload(
-    overloaded: bool = Query(..., description="과부하 플래그 on/off"),
-    failure_rate: float = Query(0.5, ge=0.0, le=1.0, description="요청 실패 확률(0~1)"),
-    extra_latency_ms: int = Query(0, ge=0, description="추가 지연(ms)"),
+    admin_role: str = Depends(get_admin_user),
+    overloaded: bool = Query(...),
+    failure_rate: float = Query(0.5, ge=0.0, le=1.0),
+    extra_latency_ms: int = Query(0, ge=0),
 ):
     """
-    과부하/지연/실패율 상태를 한 번에 토글.
-    예) /admin/toggle_overload?overloaded=true&failure_rate=0.7&extra_latency_ms=200
+    과부하/지연/실패율 상태를 토글. **관리자만 접근 가능**.
     """
     STATE["overloaded"] = overloaded
     STATE["failure_rate"] = failure_rate
@@ -87,9 +133,9 @@ def toggle_overload(
     return {"ok": True, **STATE}
 
 @app.post("/admin/recover")
-def recover():
+def recover(admin_role: str = Depends(get_admin_user)):
     """
-    정상 상태로 복구.
+    정상 상태로 복구. **관리자만 접근 가능**.
     """
     STATE["overloaded"] = False
     STATE["failure_rate"] = 0.0
@@ -99,7 +145,6 @@ def recover():
 @app.get("/")
 def root():
     return {
-        "service": "Local Reliability Test Server",
-        "endpoints": ["/health", "/api/login", "/api/echo", "/admin/toggle_overload", "/admin/recover"],
+        "service": "Reliability & Auth Test Server",
         "state": STATE,
     }

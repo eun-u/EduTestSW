@@ -4,14 +4,13 @@ import sys
 import time
 import subprocess
 import requests
-import re
 import argparse
+import json
 from typing import List, Dict, Any
 
 # src 모듈 경로 추가
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-from core.parser import parse_routine
 from core.runner import run_routine
 from core.driver_backend import BackendDriver
 
@@ -24,60 +23,78 @@ except Exception:
     HAS_PLAYWRIGHT = False
 
 
-def list_json_files(base_dir="src/routines"):
-    paths = []
+def list_json_files(base_dir: str = "src/routines") -> List[str]:
+    paths: List[str] = []
     for root, _, files in os.walk(base_dir):
         for f in files:
             if f.lower().endswith(".json"):
                 paths.append(os.path.join(root, f))
     return sorted(paths)
 
-def normalize_routines(obj):
+def parse_routine(file_path: str) -> Any:
+    """JSON 파일을 읽어 파싱합니다."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def normalize_routines(obj: Any) -> List[Dict[str, Any]]:
     """
     parse_routine() 결과가 dict 또는 list일 수 있으므로
     항상 [ { name, driver, steps }, ... ] 리스트로 정규화
     """
     if obj is None:
         return []
+    
     if isinstance(obj, dict):
-        return [obj] if "steps" in obj else []
+        if "steps" in obj:
+            return [obj]
+        return []
+        
     if isinstance(obj, list):
-        # 이미 루틴 dict들의 리스트
-        if obj and isinstance(obj[0], dict) and "steps" in obj[0]:
-            return obj
-        # steps 리스트만 온 경우( [{assessment:...}, ...] )
-        if obj and all(isinstance(s, dict) and "assessment" in s for s in obj):
-            drv = "playwright" if any(s.get("assessment") == "performance" for s in obj) else "backend"
-            return [{"name": "ad-hoc routine", "driver": drv, "steps": obj}]
+        out = []
+        for item in obj:
+            if not isinstance(item, dict) or "steps" not in item:
+                continue
+            
+            if "driver" not in item:
+                is_performance = any(s.get("assessment") == "performance" for s in item.get("steps", []))
+                drv = "playwright" if is_performance else "backend"
+                item["driver"] = drv
+            out.append(item)
+        return out
+        
     return []
 
-def load_all_from_dir(dir_path="src/routines"):
-    routines = []
+
+def load_all_from_dir(dir_path: str = "src/routines") -> List[Dict[str, Any]]:
+    routines: List[Dict[str, Any]] = []
     files = list_json_files(dir_path)
-    print(f"[INFO] routines 폴더에서 JSON {len(files)}개 발견")  # ★ 이 줄 중요
+    print(f"[INFO] routines 폴더에서 JSON {len(files)}개 발견")
     for p in files:
         try:
             data = parse_routine(p)
+            print(f"✅ routine data type: {type(data)}")
+            print(f"✅ routine content: {data}")
         except Exception as e:
             print(f"[WARN] '{p}' 로드 실패: {e}")
             continue
         rts = normalize_routines(data)
         if not rts:
             print(f"[WARN] '{p}'는 유효한 루틴 형식이 아닙니다(steps 없음)")
-        # 파일 경로를 기록(검색용)
         for r in rts:
             r["_source"] = p
         routines.extend(rts)
     return routines
 
-def includes_reliability(routines) -> bool:
+
+def includes_reliability(routines: List[Dict[str, Any]]) -> bool:
     for r in routines:
         for s in r.get("steps", []):
-            if s.get("assessment") == "reliability":
+            if isinstance(s, dict) and s.get("assessment") == "reliability":
                 return True
     return False
 
-def wait_health(url="http://127.0.0.1:8000/health", timeout=15) -> bool:
+
+def wait_health(url: str = "http://127.0.0.1:8000/health", timeout: int = 15) -> bool:
     t0 = time.time()
     while time.time() - t0 < timeout:
         try:
@@ -89,22 +106,24 @@ def wait_health(url="http://127.0.0.1:8000/health", timeout=15) -> bool:
         time.sleep(0.5)
     return False
 
+
 # -------------------------------
 # 선택/필터 유틸
 # -------------------------------
 def summarize_routine(idx: int, r: Dict[str, Any]) -> str:
     drv = r.get("driver", "") or "(auto)"
     name = r.get("name", "(noname)")
-    # 대표 assessment 3개 미리보기
     kinds = [s.get("assessment") for s in r.get("steps", []) if isinstance(s, dict)][:3]
     kinds_s = ",".join([k for k in kinds if k]) or "-"
     return f"[{idx}] {name} | driver={drv} | assessments={kinds_s} | src={os.path.basename(r.get('_source','-'))}"
 
-def print_routine_table(routines: List[Dict[str, Any]]):
+
+def print_routine_table(routines: List[Dict[str, Any]]) -> None:
     print("\n=== 실행 가능한 루틴 목록 ===")
     for i, r in enumerate(routines, 1):
         print(summarize_routine(i, r))
     print("============================\n")
+
 
 def parse_index_ranges(expr: str, n: int) -> List[int]:
     """
@@ -131,29 +150,31 @@ def parse_index_ranges(expr: str, n: int) -> List[int]:
                     result.add(k)
     return sorted(result)
 
+
 def filter_by_keyword(routines: List[Dict[str, Any]], keyword: str) -> List[Dict[str, Any]]:
     kw = keyword.lower()
-    out = []
+    out: List[Dict[str, Any]] = []
     for r in routines:
-        if kw in (r.get("name","") or "").lower():
+        if kw in (r.get("name", "") or "").lower():
             out.append(r); continue
-        if kw in (r.get("_source","") or "").lower():
+        if kw in (r.get("_source", "") or "").lower():
             out.append(r); continue
-        # steps 내 url/assessment 검색
         for s in r.get("steps", []):
             if isinstance(s, dict):
-                if kw in (s.get("url","") or "").lower(): out.append(r); break
-                if kw in (s.get("assessment","") or "").lower(): out.append(r); break
+                if kw in (s.get("url", "") or "").lower(): out.append(r); break
+                if kw in (s.get("assessment", "") or "").lower(): out.append(r); break
     return out
+
 
 def filter_by_assessment(routines: List[Dict[str, Any]], kinds: List[str]) -> List[Dict[str, Any]]:
     want = set(k.strip().lower() for k in kinds if k.strip())
-    out = []
+    out: List[Dict[str, Any]] = []
     for r in routines:
-        kinds_in = { (s.get("assessment","") or "").lower() for s in r.get("steps", []) if isinstance(s, dict) }
+        kinds_in = {(s.get("assessment", "") or "").lower() for s in r.get("steps", []) if isinstance(s, dict)}
         if kinds_in & want:
             out.append(r)
     return out
+
 
 def select_routines_interactive(all_target: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     print_routine_table(all_target)
@@ -173,7 +194,7 @@ def select_routines_interactive(all_target: List[Dict[str, Any]]) -> List[Dict[s
         if not idxs:
             print("[INFO] 유효한 번호가 없습니다. 전체 실행으로 대체합니다.")
             return all_target
-        return [all_target[i-1] for i in idxs]
+        return [all_target[i - 1] for i in idxs]
 
     if sel == "k":
         kw = input("키워드: ").strip()
@@ -196,7 +217,8 @@ def select_routines_interactive(all_target: List[Dict[str, Any]]) -> List[Dict[s
     print("[INFO] 알 수 없는 입력입니다. 전체 실행으로 진행합니다.")
     return all_target
 
-def select_routines_cli(all_target: List[Dict[str, Any]], args) -> List[Dict[str, Any]]:
+
+def select_routines_cli(all_target: List[Dict[str, Any]], args: argparse.Namespace) -> List[Dict[str, Any]]:
     """비대화형 선택: --run/--pick/--filter/--assessment"""
     if args.run == "all":
         return all_target
@@ -212,42 +234,31 @@ def select_routines_cli(all_target: List[Dict[str, Any]], args) -> List[Dict[str
 
     if args.pick:
         idxs = parse_index_ranges(args.pick, len(picked))
-        picked = [picked[i-1] for i in idxs] if idxs else []
+        picked = [picked[i - 1] for i in idxs] if idxs else []
 
     if not picked:
         print("[INFO] 선택 결과가 비었습니다. 전체 실행으로 대체합니다.")
         return all_target
     return picked
 
+
 # -------------------------------
 # 메인
 # -------------------------------
 if __name__ == "__main__":
-<<<<<<< HEAD
-    # CLI 인자 (비대화형 선택 가능)
     parser = argparse.ArgumentParser(description="Run routines with driver/test selection.")
     parser.add_argument("--run", choices=["all"], help="모든 테스트 실행")
     parser.add_argument("--pick", help="번호로 선택 (예: '1,3-5') — 필터 적용 후의 인덱스 기준")
     parser.add_argument("--filter", help="키워드 필터(이름/URL/assessment/파일명)")
     parser.add_argument("--assessment", help="assessment 타입 필터. 예: 'functional,reliability'")
-    args, unknown = parser.parse_known_args()
+    args, _ = parser.parse_known_args()
 
     # 1) 모든 루틴 로드
     routines = load_all_from_dir("src/routines")
     print(f"[INFO] 로드된 루틴 수: {len(routines)}")
-=======
-    # 1) JSON 로드
-    try:
-        routine = parse_routine("src/routines/performance_backend.json")
-    except Exception as e:
-        print(f"[ERROR] 루틴 로딩 실패: {e}")
-        sys.exit(1)
-    # example_routine.json 파일 파싱
-    #routine = parse_routine("example_routine.json")
-    
-    # yujin 25.08.07 구현 내용 테스트용
-    #routine = parse_routine("src/routines/EDU_test_design_backend.json")
->>>>>>> yujin
+    if not routines:
+        print("[INFO] 'src/routines'에서 JSON을 찾지 못했습니다. 경로/파일 유무를 확인하세요.")
+        sys.exit(0)
 
     # 2) 드라이버 선택
     print("사용할 드라이버를 선택하세요:")
@@ -269,7 +280,16 @@ if __name__ == "__main__":
     all_target = [r for r in routines if r.get("driver", "").lower() in ("", selected_driver)]
     print(f"[INFO] '{selected_driver}' 대상 루틴: {len(all_target)}개")
     if not all_target:
-        print(f"[INFO] '{selected_driver}'용 루틴이 없습니다. 종료합니다.")
+        if selected_driver == "backend" and not HAS_PLAYWRIGHT:
+            only_playwright = any(
+                (r.get("driver", "").lower() == "playwright" or
+                 any(isinstance(s, dict) and s.get("assessment") == "performance" for s in r.get("steps", [])))
+                for r in routines
+            )
+            if only_playwright:
+                print("[INFO] 실행 가능한 백엔드 루틴이 없습니다. Playwright 기반 테스트만 감지되었습니다.")
+                print(" - Playwright 설치 후 다시 실행하거나(그리고 드라이버 2 선택),")
+                print(" - 또는 backend 대상 루틴(JSON)을 추가하세요.")
         sys.exit(0)
 
     # 3.5) 어떤 테스트를 실행할지 선택 (CLI 우선, 없으면 인터랙티브)
@@ -283,20 +303,33 @@ if __name__ == "__main__":
         print("[INFO] 실행할 루틴이 없습니다. 종료합니다.")
         sys.exit(0)
 
-    # 4) reliability 포함 시 서버 자동 기동(venv 파이썬 사용), 이미 떠 있으면 생략
+    # 4) reliability 포함 시 서버 자동 기동, 이미 떠 있으면 생략
     server = None
     try:
         if selected_driver == "backend" and includes_reliability(target):
             if wait_health():
                 print("[INFO] 기존 서버 감지. 재기동 생략합니다.")
             else:
-                server = subprocess.Popen(
-                    [sys.executable, "-m", "uvicorn", "server:app",
-                     "--host", "127.0.0.1", "--port", "8000", "--reload"]
-                )
-                print("[INFO] 서버 부팅 대기…")
-                if not wait_health():
-                    print("[WARN] /health 응답 대기 초과. 그래도 진행합니다.")
+                # uvicorn 사전 체크(미설치 시 친절 안내)
+                try:
+                    import uvicorn  # noqa: F401
+                except Exception:
+                    print("[WARN] uvicorn 미설치로 서버 자동 기동을 생략합니다. ")
+                    print("     pip install uvicorn[standard] 후 다시 시도하거나, 수동으로 서버를 띄우세요:")
+                    print("     python -m uvicorn server:app --host 127.0.0.1 --port 8000")
+                else:
+                    try:
+                        server = subprocess.Popen(
+                            [sys.executable, "-m", "uvicorn", "server:app",
+                             "--host", "127.0.0.1", "--port", "8000"],  # --reload 제거
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True
+                        )
+                        print("[INFO] 서버 부팅 대기…")
+                        if not wait_health():
+                            print("[WARN] /health 응답 대기 초과. 신뢰성 테스트가 실패할 수 있습니다.")
+                    except Exception as e:
+                        print(f"[WARN] 서버 자동 기동 실패: {e}. 계속 진행합니다.")
 
         # 5) 루틴 순차 실행
         for r in target:
@@ -304,17 +337,23 @@ if __name__ == "__main__":
             run_routine(r, driver)
 
     finally:
-        # 드라이버 종료
-        if hasattr(driver, "close") and callable(driver.close):
-            try:
+        # 드라이버 종료(유연하게 시도)
+        try:
+            if hasattr(driver, "close") and callable(getattr(driver, "close")):
                 driver.close()
-            except Exception:
-                pass
+            elif hasattr(driver, "run") and callable(getattr(driver, "run")):
+                driver.run()
+        except Exception as e:
+            print(f"[WARN] 드라이버 종료 중 예외: {e}")
+
         # 서버 종료
         if server is not None:
             print("[INFO] 서버 종료")
-            server.terminate()
             try:
+                server.terminate()
                 server.wait(timeout=5)
             except Exception:
-                server.kill()
+                try:
+                    server.kill()
+                except Exception:
+                    pass

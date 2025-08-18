@@ -1,6 +1,6 @@
 {
-  "name": "기능성 검사 - 폼 기반 주요 기능 확인",
-  "driver": "backend",
+  "name": "기능성 검사 - 폼 기반 주요 기능 확인 (Playwright)",
+  "driver": "playwright",
   "steps": [
     {
       "assessment": "functional",

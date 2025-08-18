@@ -1,3 +1,5 @@
+#윤수영
+
 # src/assessments/functional.py
 # 정리된 요약 블록으로 결과 출력하는 기능성 테스트
 import requests
@@ -177,6 +179,56 @@ def _run_element_check(soup: BeautifulSoup, element: str, expected_text: str) ->
     else:
         return {"status": "PASS", "passed": 1, "failed": 0, "details": [f"{element} exists"]}
 
+# ───────────── 페이지 로더 ─────────────
+def _load_soup_backend(url: str) -> BeautifulSoup:
+    resp = requests.get(url, headers=UA, timeout=12)
+    resp.raise_for_status()
+    return BeautifulSoup(resp.text, "html.parser")
+
+def _load_soup_playwright(driver, url: str) -> BeautifulSoup:
+    """
+    PlaywrightDriver의 형태가 서로 다를 수 있어 최대한 관대한 탐색:
+    - driver.page 가 있으면 그대로 사용
+    - driver.context 가 있으면 new_page()
+    - driver.browser 가 있으면 새 context/page 생성
+    - 어떤 것도 없으면 Backend 로더로 폴백
+    """
+    try:
+        page = getattr(driver, "page", None)
+
+        context = getattr(driver, "context", None)
+        browser = getattr(driver, "browser", None)
+
+        if page is None and context is not None and hasattr(context, "new_page"):
+            page = context.new_page()
+
+        if page is None and browser is not None:
+            # 일부 래퍼는 browser만 노출
+            context = browser.new_context()
+            page = context.new_page()
+
+        if page is None:
+            # 드라이버 래퍼가 페이지 인터페이스를 안 노출했다면 백엔드 경로로 폴백
+            return _load_soup_backend(url)
+
+        page.goto(url, wait_until="load", timeout=15000)
+        html = page.content()
+        return BeautifulSoup(html, "html.parser")
+    except Exception:
+        # 실패 시에도 백엔드 경로로 폴백하여 테스트를 이어간다.
+        return _load_soup_backend(url)
+
+def _is_playwright_driver(driver) -> bool:
+    cls = driver.__class__.__name__.lower()
+    if "playwright" in cls:
+        return True
+    # 속성 기반 휴리스틱
+    return any([
+        hasattr(driver, "page"),
+        hasattr(driver, "context"),
+        hasattr(driver, "browser"),
+    ])
+
 # ───────────── 메인 엔트리 ─────────────
 def check(driver, step):
     """
@@ -195,10 +247,10 @@ def check(driver, step):
         _box("Functional Result", [_line("Status", "SKIP"), _line("Reason", "url is empty")])
         return
 
-    # 1) 페이지 로드
+    # 1) 페이지 로드 (드라이버 타입 자동 감지)
+    is_pw = _is_playwright_driver(driver)
     try:
-        resp = requests.get(url, headers=UA, timeout=12)
-        resp.raise_for_status()
+        soup = _load_soup_playwright(driver, url) if is_pw else _load_soup_backend(url)
     except Exception as e:
         _box("Functional Result", [
             _line("Status", "FAIL"),
@@ -207,9 +259,7 @@ def check(driver, step):
         ])
         return
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    # 2) 검사 실행
+    # 2) 검사 실행 (로직은 공통)
     if feature:
         res = _run_feature_checks(soup, feature)
         title = "Functional Result"

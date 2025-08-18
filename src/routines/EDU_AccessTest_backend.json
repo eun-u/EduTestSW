@@ -1,0 +1,12 @@
+{
+  "name": "EDU_AccessTest - Backend",
+  "description": "BackendDriver를 사용하여 접근 제어(권한) 취약점을 테스트합니다.",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "access_control",
+      "name": "일반 사용자 권한으로 관리자 API 접근 테스트",
+      "test_case": "access_control_test"
+    }
+  ]
+}

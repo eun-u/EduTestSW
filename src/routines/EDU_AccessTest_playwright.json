@@ -1,0 +1,12 @@
+{
+  "name": "EDU_AccessTest - Playwright",
+  "description": "PlaywrightDriver를 사용하여 URL 직접 접근을 통한 권한 우회를 테스트합니다.",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "access_control",
+      "name": "URL 직접 입력으로 관리자 페이지 접근 시도",
+      "test_case": "access_control_test"
+    }
+  ]
+}
