@@ -1,0 +1,96 @@
+{
+  "name": "TestDesign - 시험 및 평가 설계",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "test_design",
+      "type": "blueprint_presence",
+      "items": [
+        {
+          "id": "Q1",
+          "stem": "리스트의 길이를 반환하는 파이썬 함수는 무엇인가?",
+          "options": ["len()", "size()", "length()", "count()"],
+          "answer": "len()",
+          "difficulty": "Easy",
+          "objective": "지식",
+          "type": "객관식",
+          "출제기준": "단원1-파이썬 기초(리스트/딕셔너리) 핵심개념"
+        },
+        {
+          "id": "Q2",
+          "stem": "아래 코드의 시간 복잡도를 분석하고, 최적화 방안을 두 가지 제시하라.",
+          "objective": "분석",
+          "type": "서술형",
+          "출제기준": "단원3-시간복잡도 분석 및 최적화 전략",
+          "채점기준": "주요 루프 식별 + 빅오 표기 + 두 가지 이상의 합리적 최적화 제안을 모두 포함하면 만점"
+        },
+        {
+          "id": "Q3",
+          "stem": "HTTP와 HTTPS의 차이를 한 문장으로 요약하라.",
+          "type": "단답형",
+          "objective": "이해",
+          "채점기준": "암호화/보안 계층 언급 시 정답",
+          "blueprint": "단원2-네트워크 기초: HTTP/HTTPS 비교(보안계층)"
+        },
+        {
+          "id": "Q4",
+          "stem": "다음 요구사항을 충족하는 간단한 TODO 앱의 설계를 사례로 설명하라.",
+          "objective": "분석",
+          "type": "사례형",
+          "difficulty": "Hard",
+          "출제기준": "단원4-설계 사례 분석(요구사항→설계→검증)"
+        }
+      ],
+      "min_blueprint_len": 10
+    },
+    {
+      "assessment": "test_design",
+      "type": "difficulty_balance",
+      "items": [
+        { "id": "Q1", "stem": "리스트 길이 함수?", "options": ["len()", "size()", "length()", "count()"], "answer": "len()", "difficulty": "Easy", "objective": "지식", "type": "객관식" },
+        { "id": "Q2", "stem": "코드의 시간복잡도 분석 및 최적화 방안 제시", "objective": "분석", "type": "서술형" },
+        { "id": "Q3", "stem": "HTTP vs HTTPS 한 문장 요약", "type": "단답형", "objective": "이해" },
+        { "id": "Q4", "stem": "요구사항을 만족하는 TODO 앱 설계 설명", "objective": "분석", "type": "사례형", "difficulty": "Hard" }
+      ],
+      "use_llm": false,
+      "max_skew": 0.7
+    },
+    {
+      "assessment": "test_design",
+      "type": "objective_type_alignment",
+      "items": [
+        { "id": "Q1", "objective": "지식", "type": "객관식" },
+        { "id": "Q2", "objective": "분석", "type": "서술형" },
+        { "id": "Q3", "objective": "이해", "type": "단답형" },
+        { "id": "Q4", "objective": "분석", "type": "사례형" }
+      ],
+      "use_llm": false
+    },
+    {
+      "assessment": "test_design",
+      "type": "rubric_quality",
+      "items": [
+        { "id": "Q2", "type": "서술형", "채점기준": "주요 루프 식별 + 빅오 표기 + 두 가지 이상의 합리적 최적화 제안을 모두 포함하면 만점" },
+        { "id": "Q3", "type": "단답형", "채점기준": "적절히 서술" }
+      ],
+      "min_rubric_len": 15,
+      "subjective_types": ["서술형", "단답형", "프로젝트", "발표"]
+    },
+    {
+      "assessment": "test_design",
+      "type": "autograde_accuracy",
+      "autograde_dataset": {
+        "questions": [
+          { "id": "Q1", "type": "객관식", "gold": "len()" },
+          { "id": "Q3", "type": "단답형", "gold": "HTTPS는 전송 계층 보안을 추가한다" },
+          { "id": "Q5", "type": "서술형", "gold": "과정과 근거를 제시하며 비교" }
+        ],
+        "submissions": [
+          { "student_id": "S1", "answers": { "Q1": "len()", "Q3": "https는 보안 계층이 있다", "Q5": "근거 없이 요약" } },
+          { "student_id": "S2", "answers": { "Q1": "length()", "Q3": "http와는 달리 암호화", "Q5": "과정과 근거를 제시하며 비교" } }
+        ]
+      },
+      "thresholds": { "단답형": 0.7, "서술형": 0.5 }
+    }
+  ]
+}

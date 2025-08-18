@@ -1,0 +1,68 @@
+{
+  "name": "LearningData - 학습 데이터 관리",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "learning_data",
+      "type": "history_presence",
+      "users": ["u1", "u2", "u3", "u4"],
+      "logs": [
+        { "user_id": "u1", "event_type": "start_course", "ts": "2025-08-15 10:00:00" },
+        { "user_id": "u1", "event_type": "progress",     "ts": "2025-08-15 10:30:00" },
+        { "user_id": "u1", "event_type": "submit_assignment", "ts": "2025-08-16 12:00:00" },
+        { "user_id": "u2", "event_type": "start_course", "ts": "2025-08-15 09:00:00" },
+        { "user_id": "u2", "event_type": "progress",     "ts": "2025-08-16 11:00:00" },
+        { "user_id": "u3", "event_type": "start_course", "ts": "2025-08-14 08:00:00" }
+      ]
+    },
+    {
+      "assessment": "learning_data",
+      "type": "progress_completeness",
+      "freshness_days": 14,
+      "progress": [
+        { "user_id": "u1", "progress": 40, "last_updated": "2025-08-10 09:00:00" },
+        { "user_id": "u2", "progress": 0,  "last_updated": "2025-08-16 14:20:00" },
+        { "user_id": "u3", "progress": null, "last_updated": "2025-08-01 12:00:00" }
+      ]
+    },
+    {
+      "assessment": "learning_data",
+      "type": "activity_log_adequacy",
+      "use_ai": false,
+      "required_events": ["start_course", "progress", "submit_assignment", "take_exam"],
+      "logs": [
+        { "user_id": "u1", "event_type": "start_course", "ts": "2025-08-15 10:00:00" },
+        { "user_id": "u1", "event_type": "progress",     "ts": "2025-08-15 10:30:00" },
+        { "user_id": "u1", "event_type": "submit_assignment", "ts": "2025-08-16 12:00:00" },
+        { "user_id": "u1", "event_type": "take_exam",    "ts": "2025-08-16 16:00:00" },
+
+        { "user_id": "u2", "event_type": "start_course", "ts": "2025-08-15 09:00:00" },
+        { "user_id": "u2", "event_type": "progress",     "ts": "2025-08-16 11:00:00" },
+
+        { "user_id": "u3", "event_type": "start_course", "ts": "2025-08-14 08:00:00" },
+        { "user_id": "u3", "event_type": "progress",     "ts": "2025-08-15 08:30:00" },
+        { "user_id": "u3", "event_type": "submit_assignment", "ts": "2025-08-16 09:10:00" }
+      ]
+    },
+    {
+      "assessment": "learning_data",
+      "type": "completion_rule_check",
+      "completion_rules": { "min_progress": 100, "require_assignment": true, "require_exam": true },
+      "progress": [
+        { "user_id": "u1", "progress": 100 },
+        { "user_id": "u2", "progress": 70 },
+        { "user_id": "u3", "progress": 100 }
+      ],
+      "assignment": [
+        { "user_id": "u1", "submitted": true },
+        { "user_id": "u2", "submitted": true },
+        { "user_id": "u3", "submitted": false }
+      ],
+      "exam": [
+        { "user_id": "u1", "taken": true },
+        { "user_id": "u2", "taken": false },
+        { "user_id": "u3", "taken": true }
+      ]
+    }
+  ]
+}
