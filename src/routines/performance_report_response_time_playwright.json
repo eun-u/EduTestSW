@@ -1,0 +1,23 @@
+{
+  "name": "Performance - 응답시간 측정",
+  "driver": "playwright",
+  "page": {
+    "browser": "chromium",
+    "headless": true,
+    "viewport": { "width": 1280, "height": 800 }
+  },
+  "steps": [
+    {
+      "assessment": "performance",
+      "type": "report_response_time",
+      "actions": [
+        { "name": "Open Home",   "op": "goto", "url": "https://jsonplaceholder.typicode.com/" },
+        { "name": "Open/posts", "op": "goto", "url": "https://jsonplaceholder.typicode.com/posts" }
+      ],
+      "repeats": 3,
+      "warmups": 1,
+      "thresholds": { "*": 1.200 },
+      "rule": "p95<=threshold"
+    }
+  ]
+}

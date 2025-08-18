@@ -1,0 +1,79 @@
+{
+  "name": "Security - 통합 루틴 (Playwright)",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "check_https_certificate",
+      "url": "https://naver.com"
+    },
+    {
+      "assessment": "security",
+      "type": "check_file_encryption_static",
+      "code_path": "uploads/upload_handler_example.py"
+    },
+
+
+    {
+      "assessment": "security",
+      "type": "report_hash_verify",
+      "file_path": "reports/final_report.pdf",
+      "expected_sha256": "abc123...deadbeef"
+    },
+    {
+      "assessment": "security",
+      "type": "download_integrity",
+      "download_url": "https://example.com/export/file.zip",
+      "server_sha256": "feedfacecafebabedeadbeef00112233"
+    },
+    {
+      "assessment": "security",
+      "type": "input_validation",
+      "endpoints": [
+        {
+          "url": "https://example.com/api/profile",
+          "bad_inputs": ["<script>alert(1)</script>", "' OR 1=1 --", "../../etc/passwd", "{\"name\": null}"]
+        }
+      ]
+    },
+    {
+      "assessment": "security",
+      "type": "report_audit_trail",
+      "report_id": "RPT-2025-08-17-001"
+    },
+    {
+      "assessment": "security",
+      "type": "report_lock_immutable",
+      "report_id": "RPT-2025-08-17-001"
+    },
+    {
+      "assessment": "security",
+      "type": "action_logging",
+      "actions": ["LOGIN", "CREATE_COURSE", "UPDATE_LESSON", "EXPORT_REPORT"]
+    },
+    {
+      "assessment": "security",
+      "type": "admin_audit_view",
+      "admin_endpoint": "https://example.com/admin/audit-logs"
+    },
+    {
+      "assessment": "security",
+      "type": "auth_login",
+      "login_url": "https://example.com/api/login",
+      "credentials": { "username": "admin@example.com", "password": "wrong-or-dummy" }
+    },
+    {
+      "assessment": "security",
+      "type": "login_rate_limit",
+      "login_url": "https://example.com/api/login",
+      "bad_password": "wrongpass",
+      "attempts": 10,
+      "expected_lockout": true
+    },
+    {
+      "assessment": "security",
+      "type": "token_expiry",
+      "expected_max_age_sec": 3600
+    }
+  ]
+}

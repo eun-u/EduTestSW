@@ -1,0 +1,11 @@
+{
+  "name": "Security - HTTPS 통신 적용 확인",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "check_https_certificate",
+      "url": "https://naver.com"
+    }
+  ]
+}
