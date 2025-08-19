@@ -1,5 +1,6 @@
 """
 ========== 보안성 Security ==========
+* 수정 필요!!!
 
 | 기밀성 | Confidentiality |
 - check_https_certificate :         https 통신 적용 확인
@@ -395,7 +396,7 @@ def report_hash_verify(step: Dict[str, Any], driver):
     
 
 # ---------------------------------------------------------------------
-# 무결성: 파일 다운로드 시 무결성 체크
+# 무결성: 파일 다운로드 시 무결성 체크 (멀티 전략 지원)
 # ---------------------------------------------------------------------
 def download_integrity(step: Dict[str, Any], driver):
     """
@@ -406,12 +407,16 @@ def download_integrity(step: Dict[str, Any], driver):
             - "format_basic": 포맷 인지형 얕은 검증(PDF/ZIP 등)
             - "range_consistency": Range 다운로드 재조합이 전체와 동일한지
             - "server_signature": 서버가 제공하는 서명 검증(드라이버 지원 필요)
-    
+
+    멀티 전략 확장:
+      - 기존과 호환: "strategy": "hash"  (문자열 1개)
+      - 확장:       "strategy": ["hash", "size_mime_magic", ...]  (여러 개를 한 번에 실행)
+
     기대 입력 예:
       {
         "file_id": "FILE-1",
-        "strategy": "size_mime_magic",
-        "expected": {"content_type": "application/pdf"}  # 선택
+        "strategy": ["size_mime_magic","format_basic"],   # ← 멀티 전략
+        "expected": {"content_type": "application/pdf"}   # 선택
       }
     드라이버 기대(전략별 필요 메서드):
       - common: download_file(file_id) -> bytes
@@ -428,6 +433,11 @@ def download_integrity(step: Dict[str, Any], driver):
         if not file_id:
             res = result(name, "NA", {"reason": "file_id 미제공"})
             print_res(res, label); return res
+
+        # strategy를 문자열 또는 리스트로 받도록 정규화
+        raw_strategy = step.get("strategy", "hash")
+        strategies = list(raw_strategy) if isinstance(raw_strategy, (list, tuple, set)) else [raw_strategy]
+
         if is_pw:
             res = result(name, "NA", {"reason": "Playwright 모드에서는 바이트 단위 검증 미지원"})
             print_res(res, label); return res
@@ -436,129 +446,152 @@ def download_integrity(step: Dict[str, Any], driver):
             res = result(name, "NA", {"reason": "driver.download_file 미구현"})
             print_res(res, label); return res
 
-        strategy = step.get("strategy", "hash")
         blob = driver.download_file(file_id)
         if not isinstance(blob, (bytes, bytearray)):
             res = result(name, "NA", {"reason": "다운로드 바이트 획득 실패"})
             print_res(res, label); return res
+        blob = bytes(blob)  # 공통 바이트
 
-        # --- 전략별 분기 ---
-        if strategy == "size_mime_magic":
-            details = {"file_id": file_id}
-            # 메타데이터 확보(가능하면 서버에서, 없으면 expected 사용)
-            meta = {}
-            if hasattr(driver, "get_file_meta"):
-                try:
-                    meta = driver.get_file_meta(file_id) or {}
-                except Exception:
-                    meta = {}
-            expected = step.get("expected", {})
-            content_length = meta.get("content_length") or expected.get("content_length")
-            content_type   = meta.get("content_type") or expected.get("content_type")
+        # (옵션) 메타는 1회만 조회해 공유
+        meta = {}
+        if hasattr(driver, "get_file_meta"):
+            try:
+                meta = driver.get_file_meta(file_id) or {}
+            except Exception:
+                meta = {}
 
-            actual_len = len(blob)
-            detected_magic = detect_magic(bytes(blob))
-            details.update({
-                "content_length_srv": content_length,
-                "content_type_srv": content_type,
-                "actual_length": actual_len,
-                "detected_magic": detected_magic
-            })
+        # --- 단일 전략 실행기 ---
+        def run_one(st: str) -> Dict[str, Any]:
+            if st == "size_mime_magic":
+                details = {"file_id": file_id}
+                expected = step.get("expected", {})
+                content_length = meta.get("content_length") or expected.get("content_length")
+                content_type   = meta.get("content_type") or expected.get("content_type")
 
-            evid = []
-            ok_len  = (content_length is None) or (int(content_length) == actual_len)
-            ok_type = True
-            if content_type:
-                # 아주 얕게: magic과 MIME의 상식적 매칭만 확인
-                mapping = {"pdf": "pdf", "png": "png", "jpg": "jpeg", "gif": "gif", "zip": "zip"}
-                hint = mapping.get(detected_magic, "")
-                ok_type = (hint in content_type.lower())
-            if ok_len: evid.append("Content-Length 일치 또는 미제공")
-            else: evid.append(f"Content-Length 불일치: srv={content_length}, actual={actual_len}")
-            if ok_type: evid.append("Content-Type ↔ magic 상식적 일치")
-            else: evid.append(f"Content-Type 불일치 가능성: type={content_type}, magic={detected_magic}")
+                actual_len = len(blob)
+                detected_magic = detect_magic(blob)
+                details.update({
+                    "content_length_srv": content_length,
+                    "content_type_srv": content_type,
+                    "actual_length": actual_len,
+                    "detected_magic": detected_magic
+                })
 
-            status = "PASS" if (ok_len and ok_type) else ("WARN" if ok_len or ok_type else "FAIL")
-            res = result(name, status, details, evid); print_res(res, label); return res
+                evid = []
+                ok_len  = (content_length is None) or (int(content_length) == actual_len)
+                ok_type = True
+                if content_type:
+                    # 아주 얕게: magic과 MIME의 상식적 매칭만 확인
+                    mapping = {"pdf": "pdf", "png": "png", "jpg": "jpeg", "gif": "gif", "zip": "zip"}
+                    hint = mapping.get(detected_magic, "")
+                    ok_type = (hint in content_type.lower())
+                if ok_len: evid.append("Content-Length 일치 또는 미제공")
+                else:      evid.append(f"Content-Length 불일치: srv={content_length}, actual={actual_len}")
+                if ok_type: evid.append("Content-Type ↔ magic 상식적 일치")
+                else:       evid.append(f"Content-Type 불일치 가능성: type={content_type}, magic={detected_magic}")
 
-        elif strategy == "format_basic":
-            details = {"file_id": file_id}
-            evid = []
-            magic = detect_magic(bytes(blob))
-            details["detected_magic"] = magic
+                status = "PASS" if (ok_len and ok_type) else ("WARN" if ok_len or ok_type else "FAIL")
+                return result(name, status, details, evid)
 
-            if magic == "pdf":
-                # 시작/종단 간단 확인
-                ok_start = bytes(blob).startswith(b"%PDF-")
-                ok_end   = bytes(blob).rstrip().endswith(b"%%EOF")
-                status = "PASS" if (ok_start and ok_end) else ("WARN" if ok_start or ok_end else "FAIL")
-                evid.append(f"PDF 서명/EOF: start={ok_start}, eof={ok_end}")
-                res = result(name, status, details, evid); print_res(res, label); return res
+            elif st == "format_basic":
+                details = {"file_id": file_id}
+                evid = []
+                magic = detect_magic(blob)
+                details["detected_magic"] = magic
 
-            if magic == "zip":
-                try:
-                    zf = zipfile.ZipFile(io.BytesIO(bytes(blob)))
-                    bad = zf.testzip()
-                    details["zip_bad_entry"] = bad
-                    if bad is None:
-                        res = result(name, "PASS", details, ["ZIP 구조/CRC 정상"]); print_res(res, label); return res
-                    res = result(name, "FAIL", details, [f"ZIP 손상 항목: {bad}"]); print_res(res, label); return res
-                except Exception as ex:
-                    res = result(name, "FAIL", details, [f"ZIP 열기 실패: {ex}"]); print_res(res, label); return res
+                if magic == "pdf":
+                    # 시작/종단 간단 확인
+                    ok_start = blob.startswith(b"%PDF-")
+                    ok_end   = blob.rstrip().endswith(b"%%EOF")
+                    status = "PASS" if (ok_start and ok_end) else ("WARN" if ok_start or ok_end else "FAIL")
+                    evid.append(f"PDF 서명/EOF: start={ok_start}, eof={ok_end}")
+                    return result(name, status, details, evid)
 
-            # 기타 포맷: 최소한 길이>0 정도만
-            status = "PASS" if len(blob) > 0 else "FAIL"
-            evid.append("알 수 없는 포맷: 최소 바이트 존재 여부만 확인")
-            res = result(name, status, details, evid); print_res(res, label); return res
+                if magic == "zip":
+                    try:
+                        zf = zipfile.ZipFile(io.BytesIO(blob))
+                        bad = zf.testzip()
+                        details["zip_bad_entry"] = bad
+                        if bad is None:
+                            return result(name, "PASS", details, ["ZIP 구조/CRC 정상"])
+                        return result(name, "FAIL", details, [f"ZIP 손상 항목: {bad}"])
+                    except Exception as ex:
+                        return result(name, "FAIL", details, [f"ZIP 열기 실패: {ex}"])
 
-        elif strategy == "range_consistency":
-            if not hasattr(driver, "download_range"):
-                res = result(name, "NA", {"reason": "driver.download_range 미구현"})
-                print_res(res, label); return res
-            total = len(blob)
-            mid = total // 2
-            part1 = driver.download_range(file_id, 0, mid)
-            part2 = driver.download_range(file_id, mid, total)
-            if not isinstance(part1, (bytes, bytearray)) or not isinstance(part2, (bytes, bytearray)):
-                res = result(name, "NA", {"reason": "range 바이트 획득 실패"})
-                print_res(res, label); return res
-            reassembled = bytes(part1) + bytes(part2)
-            if reassembled == bytes(blob):
-                res = result(name, "PASS", {"file_id": file_id, "size": total}, ["Range 재조합 == 전체 바이트"])
-                print_res(res, label); return res
-            res = result(name, "FAIL", {"file_id": file_id, "size": total}, ["Range 재조합 ≠ 전체 바이트"])
-            print_res(res, label); return res
+                # 기타 포맷: 최소한 길이>0 정도만
+                status = "PASS" if len(blob) > 0 else "FAIL"
+                evid.append("알 수 없는 포맷: 최소 바이트 존재 여부만 확인")
+                return result(name, status, details, evid)
 
-        elif strategy == "server_signature":
-            # 서버가 서명/검증 API를 제공하는 경우(해시가 아니라 '서명'으로 무결성+출처 보증)
-            if not (hasattr(driver, "get_file_signature") and hasattr(driver, "verify_signature")):
-                res = result(name, "NA", {"reason": "서명 검증 API 미구현"})
-                print_res(res, label); return res
-            sig_info = driver.get_file_signature(file_id)
-            ok = bool(sig_info) and bool(driver.verify_signature(bytes(blob), sig_info))
-            if ok:
-                res = result(name, "PASS", {"file_id": file_id, "sig_alg": sig_info.get("alg")}, ["서명 검증 성공"])
-                print_res(res, label); return res
-            res = result(name, "FAIL", {"file_id": file_id, "sig_alg": (sig_info or {}).get("alg")}, ["서명 검증 실패"])
-            print_res(res, label); return res
+            elif st == "range_consistency":
+                if not hasattr(driver, "download_range"):
+                    return result(name, "NA", {"reason": "driver.download_range 미구현"})
+                total = len(blob)
+                mid = total // 2
+                part1 = driver.download_range(file_id, 0, mid)          # [0, mid)
+                part2 = driver.download_range(file_id, mid, total)      # [mid, total)
+                if not isinstance(part1, (bytes, bytearray)) or not isinstance(part2, (bytes, bytearray)):
+                    return result(name, "NA", {"reason": "range 바이트 획득 실패"})
+                reassembled = bytes(part1) + bytes(part2)
+                if reassembled == blob:
+                    return result(name, "PASS", {"file_id": file_id, "size": total}, ["Range 재조합 == 전체 바이트"])
+                return result(name, "FAIL", {"file_id": file_id, "size": total}, ["Range 재조합 ≠ 전체 바이트"])
 
-        else:  # "hash"
-            if step.get("use_server_hash") and hasattr(driver, "get_file_hash"):
-                server_hash = driver.get_file_hash(file_id)
-                h1 = sha256_bytes(bytes(blob))
-                details = {"file_id": file_id, "client_hash": h1, "server_hash": server_hash}
-                if server_hash and server_hash == h1:
-                    res = result(name, "PASS", details, [f"서버 해시 일치: {h1[:8]}..."]); print_res(res, label); return res
+            elif st == "server_signature":
+                # 서버가 서명/검증 API를 제공하는 경우(해시가 아니라 '서명'으로 무결성+출처 보증)
+                if not (hasattr(driver, "get_file_signature") and hasattr(driver, "verify_signature")):
+                    return result(name, "NA", {"reason": "서명 검증 API 미구현"})
+                sig_info = driver.get_file_signature(file_id)
+                ok = bool(sig_info) and bool(driver.verify_signature(blob, sig_info))
+                if ok:
+                    return result(name, "PASS", {"file_id": file_id, "sig_alg": (sig_info or {}).get("alg")}, ["서명 검증 성공"])
+                return result(name, "FAIL", {"file_id": file_id, "sig_alg": (sig_info or {}).get("alg")}, ["서명 검증 실패"])
+
+            else:  # "hash" (기본)
+                if step.get("use_server_hash") and hasattr(driver, "get_file_hash"):
+                    server_hash = driver.get_file_hash(file_id)
+                    h1 = sha256_bytes(blob)
+                    details = {"file_id": file_id, "client_hash": h1, "server_hash": server_hash}
+                    if server_hash and server_hash == h1:
+                        return result(name, "PASS", details, [f"서버 해시 일치: {h1[:8]}..."])
+                    else:
+                        return result(name, "FAIL", details, ["서버 해시 불일치 또는 미노출"])
                 else:
-                    res = result(name, "FAIL", details, ["서버 해시 불일치 또는 미노출"]); print_res(res, label); return res
-            else:
-                # 대체: 2회 다운로드 동일성 (바이트 비교, 해시 불필요)
-                blob2 = driver.download_file(file_id)
-                same = isinstance(blob2, (bytes, bytearray)) and (bytes(blob2) == bytes(blob))
-                details = {"file_id": file_id, "size": len(blob)}
-                if same:
-                    res = result(name, "PASS", details, ["2회 다운로드 바이트 동일성 확인 PASS"]); print_res(res, label); return res
-                res = result(name, "WARN", details, ["서버 해시 미제공 + 2회 동일성 검증 실패"]); print_res(res, label); return res
+                    # 대체: 2회 다운로드 동일성 (바이트 비교, 해시 불필요)
+                    blob2 = driver.download_file(file_id)
+                    same = isinstance(blob2, (bytes, bytearray)) and (bytes(blob2) == blob)
+                    details = {"file_id": file_id, "size": len(blob)}
+                    if same:
+                        return result(name, "PASS", details, ["2회 다운로드 바이트 동일성 확인 PASS"])
+                    return result(name, "WARN", details, ["서버 해시 미제공 + 2회 동일성 검증 실패"])
+
+        # --- 실행 ---
+        if len(strategies) == 1:
+            st = str(strategies[0])
+            res = run_one(st)
+            # 기존 포맷 그대로 출력
+            print_res(res, label)
+            return res
+
+        # 멀티 전략: 각 전략별 결과를 개별 라벨로 출력 + 요약 1회 추가 출력
+        results = []
+        for st in strategies:
+            res = run_one(str(st))
+            print_res(res, f"{label} ({st})")
+            results.append({"strategy": str(st), **res})
+
+        # 최종 집계(가장 나쁜 상태를 선택: ERROR/FAIL > WARN > PASS > NA)
+        rank = {"ERROR": 0, "FAIL": 0, "WARN": 1, "PASS": 2, "NA": 3}
+        worst = min((rank.get(r.get("status", "NA"), 3) for r in results), default=3)
+        overall = {v: k for k, v in rank.items()}[worst]
+
+        summary = result(
+            name,
+            overall,
+            {"file_id": file_id, "strategies": list(map(str, strategies)), "results": results}
+        )
+        print_res(summary, f"{label} [summary]")
+        return summary
 
     except Exception as e:
         res = result(name, "ERROR", error=str(e))

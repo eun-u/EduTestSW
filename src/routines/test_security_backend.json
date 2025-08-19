@@ -26,6 +26,8 @@
       "type": "download_integrity",
       "mode": "backend",
       "file_id": "FILE-EXAMPLE-001",
+      "strategy": ["hash", "size_mime_magic", "format_basic", "range_consistency", "server_signature"],
+      "expected": { "content_type": "application/pdf" },
       "use_server_hash": true
     },
     {
@@ -107,7 +109,7 @@
       "protected_endpoint": "/api/me",
       "credentials": {
         "username": "admin@example.com",
-        "password": "REPLACE_WITH_TEST_PASSWORD"
+        "password": "secret"
       }
     },
     {
@@ -124,7 +126,7 @@
       "type": "token_expiry",
       "mode": "backend",
       "protected_endpoint": "/api/me",
-      "expired_token": "<PASTE_EXPIRED_JWT>",
+      "expired_token": "EXPIRED",
       "check_refresh": false
     }
   ]
