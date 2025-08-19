@@ -7,7 +7,7 @@ assessments_map = {
     "performance": performance,
     "security": security,
     "usability": usability,
-    EDU_AccessTest: EDU_AccessTest
+    "access_control": EDU_AccessTest
 }
 
 def run_routine(routine: dict, driver):

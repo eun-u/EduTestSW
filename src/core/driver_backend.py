@@ -7,6 +7,7 @@ import subprocess         # 외부 명령어 실행용 (정적 분석 등)
 
 # 백엔드 API 및 정적 분석 등을 수행하는 드라이버
 class BackendDriver:
+    name = "backend"  # 드라이버 이름
     def __init__(self):
         self.session = requests.Session()  # 세션 객체로 쿠키 등 유지
         self.last_response = None          # 마지막 응답 객체 저장
