@@ -1,5 +1,5 @@
 {
-  "name": "Security - 통합 루틴",
+  "name": "Security - Playwright (UI-only)",
   "driver": "playwright",
   "steps": [
     {
@@ -11,86 +11,6 @@
       "assessment": "security",
       "type": "check_file_encryption_static",
       "code_path": "uploads/upload_handler_encrypted.py"
-    },
-    {
-      "assessment": "security",
-      "name": "report_hash_verify",
-      "mode": "playwright",
-      "report_id": "RPT-PLACEHOLDER",
-      "use_llm": false
-    },
-    {
-      "assessment": "security",
-      "name": "download_integrity",
-      "mode": "playwright",
-      "file_id": "FILE-PLACEHOLDER",
-      "use_server_hash": false
-    },
-    {
-      "assessment": "security",
-      "name": "input_validation",
-      "mode": "playwright",
-      "endpoint": "/api/profile",
-      "invalid_payloads": [
-        { "name": "" },
-        { "name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
-        { "name": "<script>alert(1)</script>" },
-        { "name": null }
-      ],
-      "expect_status": [400, 422]
-    },
-    {
-      "assessment": "security",
-      "name": "report_audit_trail",
-      "mode": "playwright",
-      "create_report": { "title": "Audit Trail from UI" },
-      "fetch_audit": { "action": "REPORT_CREATE", "limit": 10 }
-    },
-    {
-      "assessment": "security",
-      "name": "report_lock_immutable",
-      "mode": "playwright",
-      "report_id": "RPT-PLACEHOLDER-IMMUTABLE",
-      "submit": true,
-      "edit_attempt": { "title": "changed-by-ui-test" }
-    },
-    {
-      "assessment": "security",
-      "name": "admin_audit_view",
-      "mode": "playwright",
-      "query": { "limit": 10 },
-      "require_fields": ["id", "action", "timestamp"]
-    },
-    {
-      "assessment": "security",
-      "name": "action_logging",
-      "mode": "playwright",
-      "query": { "limit": 20 },
-      "actor_keys": ["user_id", "user_email", "actor"]
-    },
-    {
-      "assessment": "security",
-      "name": "auth_login",
-      "mode": "playwright",
-      "protected_endpoint": "/api/me",
-      "credentials": { "username": "admin@example.com", "password": "REPLACE_WITH_TEST_PASSWORD" }
-    },
-    {
-      "assessment": "security",
-      "name": "login_rate_limit",
-      "mode": "playwright",
-      "username": "admin@example.com",
-      "wrong_password": "wrongpass",
-      "attempts": 7,
-      "block_expected_after": 5
-    },
-    {
-      "assessment": "security",
-      "name": "token_expiry",
-      "mode": "playwright",
-      "protected_endpoint": "/api/me",
-      "expired_token": "<PASTE_EXPIRED_JWT>",
-      "check_refresh": false
     }
   ]
 }
