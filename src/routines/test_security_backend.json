@@ -1,0 +1,131 @@
+{
+  "name": "Security - 통합 루틴",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "check_https_certificate",
+      "url": "https://naver.com"
+    },
+    {
+      "assessment": "security",
+      "type": "check_file_encryption_static",
+      "code_path": "uploads/upload_handler_encrypted.py"
+    },
+    {
+      "assessment": "security",
+      "type": "report_hash_verify",
+      "mode": "backend",
+      "create_report": {
+        "title": "Security Report - Hash Verify (Auto)"
+      },
+      "use_llm": false
+    },
+    {
+      "assessment": "security",
+      "type": "download_integrity",
+      "mode": "backend",
+      "file_id": "FILE-EXAMPLE-001",
+      "use_server_hash": true
+    },
+    {
+      "assessment": "security",
+      "type": "input_validation",
+      "mode": "backend",
+      "endpoint": "/api/profile",
+      "invalid_payloads": [
+        {
+          "name": ""
+        },
+        {
+          "name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        {
+          "name": "<script>alert(1)</script>"
+        },
+        {
+          "name": null
+        }
+      ],
+      "expect_status": [
+        400,
+        422
+      ]
+    },
+    {
+      "assessment": "security",
+      "type": "report_audit_trail",
+      "mode": "backend",
+      "create_report": {
+        "title": "Audit Trail Smoke Test"
+      },
+      "fetch_audit": {
+        "action": "REPORT_CREATE",
+        "limit": 10
+      }
+    },
+    {
+      "assessment": "security",
+      "type": "report_lock_immutable",
+      "mode": "backend",
+      "report_id": "RPT-PLACEHOLDER-IMMUTABLE",
+      "submit": true,
+      "edit_attempt": {
+        "title": "changed-by-test"
+      }
+    },
+    {
+      "assessment": "security",
+      "type": "admin_audit_view",
+      "mode": "backend",
+      "query": {
+        "limit": 10
+      },
+      "require_fields": [
+        "id",
+        "action",
+        "timestamp"
+      ]
+    },
+    {
+      "assessment": "security",
+      "type": "action_logging",
+      "mode": "backend",
+      "query": {
+        "limit": 20
+      },
+      "actor_keys": [
+        "user_id",
+        "user_email",
+        "actor"
+      ]
+    },
+    {
+      "assessment": "security",
+      "type": "auth_login",
+      "mode": "backend",
+      "protected_endpoint": "/api/me",
+      "credentials": {
+        "username": "admin@example.com",
+        "password": "REPLACE_WITH_TEST_PASSWORD"
+      }
+    },
+    {
+      "assessment": "security",
+      "type": "login_rate_limit",
+      "mode": "backend",
+      "username": "admin@example.com",
+      "wrong_password": "wrongpass",
+      "attempts": 7,
+      "block_expected_after": 5
+    },
+    {
+      "assessment": "security",
+      "type": "token_expiry",
+      "mode": "backend",
+      "protected_endpoint": "/api/me",
+      "expired_token": "<PASTE_EXPIRED_JWT>",
+      "check_refresh": false
+    }
+  ]
+}
