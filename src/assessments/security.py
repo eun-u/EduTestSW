@@ -7,22 +7,22 @@
 + print_https_result :              https 인증서 검사 결과 출력
 
 | 무결성 | Integrity |
-- report_hash_verify :              보고서 해시(SHA-256) 검증 확인 (SKELETON)
-- download_integrity :              파일 다운로드 무결성(서버 기준 해시와 일치) 확인 (SKELETON)
-- input_validation :                잘못된 입력 거부/정규화 확인 (SKELETON)
+- report_hash_verify :              보고서 해시(SHA-256) 검증 확인
+- download_integrity :              파일 다운로드 무결성 확인
+- input_validation :                잘못된 입력 거부/정규화 확인
 
 | 부인방지 | Non-Repudiation |
-- report_audit_trail :              보고서 생성 시 사용자/타임스탬프 기록 확인 (SKELETON)
-- report_lock_immutable :           제출 이후 보고서 변경 불가 확인 (SKELETON)
+- report_audit_trail :              보고서 생성 시 사용자/타임스탬프 기록 확인
+- report_lock_immutable :           제출 이후 보고서 변경 불가 확인
 
 | 책임성 | Accountability |
-- action_logging :                  주요 행위 로그/감사 기록 존재 확인 (SKELETON)
-- admin_audit_view :                관리자 모드에서 활동 이력 조회 가능 여부 (SKELETON)
+- action_logging :                  주요 행위 로그/감사 기록 존재 확인
+- admin_audit_view :                관리자 모드에서 활동 이력 조회 가능 여부
 
 | 인증성 | Authenticity |
-- auth_login :                      인증 후 보호 리소스 접근 가능 확인 (SKELETON)
-- login_rate_limit :                로그인 실패 시도 제한 확인 (SKELETON)
-- token_expiry :                    인증 토큰 만료 처리 확인 (SKELETON)
+- auth_login :                      인증 후 보호 리소스 접근 가능 확인
+- login_rate_limit :                로그인 실패 시도 제한 확인
+- token_expiry :                    인증 토큰 만료 처리 확인
 ====================================
 """
 # ---------------------------------------------------------------------
@@ -31,12 +31,13 @@
 import ssl
 import socket
 from urllib.parse import urlparse
-from datetime import datetime, timezone
+from datetime import datetime as dt, timezone
 import os
 from typing import Any, Dict, List, Optional, Tuple
 from src.llm_clients.file_encryption_client import analyze_code_for_encryption
 import io, zipfile
 import hashlib
+import json
 
 # 선택적: LLM 클라이언트가 있을 때만 사용
 try:
@@ -59,7 +60,7 @@ def is_playwright(driver: Any, mode: Optional[str]) -> Tuple[bool, str]:
     return is_pw, ("playwright" if is_pw else "backend")
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return dt.now(timezone.utc).isoformat()
 
 def result(name: str, status: str, details: Optional[Dict[str, Any]] = None,
             evidence: Optional[List[str]] = None, error: Optional[str] = None) -> Dict[str, Any]:
@@ -85,20 +86,56 @@ def detect_magic(b: bytes) -> str:
     if b.startswith(b"GIF8"): return "gif"
     if b.startswith(b"PK\x03\x04") or b.startswith(b"PK\x05\x06"): return "zip"
     return "unknown"
+
+def print_res(res: Dict[str, Any], str):
+        print("\n" + str)
+        print(f"  • 상태            : {res.get('status')}")
+        if res.get("error"):
+            print(f"  • 오류            : {res.get('error')}")
+        if res.get("details"):
+            print("  • 상세")
+            print(json.dumps(res["details"], ensure_ascii=False, indent=2))
+        if res.get("evidence"):
+            print("  • 근거")
+            for e in res["evidence"]:
+                print(f"    - {e}")
+
+def format_name(name_tuple) -> str:
+    """
+    ssl.getpeercert()의 issuer/subject는 튜플의 튜플 형태입니다.
+    예: ((('countryName', 'US'),), (('organizationName', "Let's Encrypt"),), ...)
+    사람이 읽기 쉬운 문자열로 변환합니다.
+    어떤 형태가 와도 인덱스 에러 없이 안전하게 처리합니다.
+    """
+    try:
+        parts = []
+        # name_tuple이 None/빈 값/예상과 다른 타입이어도 안전하게 처리
+        for rdn in name_tuple or []:
+            # rdn: (('key','val'), ('key2','val2'), ...)
+            try:
+                for k, v in rdn:
+                    parts.append(f"{k}={v}")
+            except Exception:
+                # 예외적으로 rdn이 2중 튜플이 아닐 수도 있으므로 문자열로 강제
+                parts.append(str(rdn))
+        return ", ".join(parts) if parts else "N/A"
+    except Exception:
+        return str(name_tuple) if name_tuple is not None else "N/A"
     
 
 # ---------------------------------------------------------------------
 # 엔트리 포인트: 보안 검사 라우팅
 # ---------------------------------------------------------------------
 def check(driver, step):
-    assessment_type = step["type"]
+    if not isinstance(step, dict):
+        raise ValueError("[SECURITY] step는 dict여야 합니다.")
+    
+    assessment_type = step.get("type") or step.get("name")
+    if not assessment_type:
+        raise ValueError("[SECURITY] step에는 'type' 또는 'name' 키가 필요합니다.")
     
     if assessment_type == "check_https_certificate":
-        url = step.get("url")
-        if not url:
-            raise ValueError("[SECURITY > CONFIDENTIALITY] 'url' 항목이 누락되었습니다.")
-        result = check_https_certificate(url)
-        print_https_result(result)
+        return check_https_certificate_step(step)
     
     elif assessment_type == "check_file_encryption_static":
         check_file_encryption_static(step, driver)
@@ -153,35 +190,89 @@ def check_https_certificate(url: str) -> dict:
     Returns:
         dict: HTTPS 적용 여부, 인증서 유효성, 발급자 정보 등이 포함된 결과 딕셔너리
     """
+    from datetime import datetime as _dt, timezone as _tz
+    
     parsed = urlparse(url)
+    if (parsed.scheme or "").lower() != "https":
+        return {"https_supported": False, "error": "URL scheme must be https"}
+
     hostname = parsed.hostname
-    port = 443  # https 기본 포트
-    
+    if not hostname:
+        return {"https_supported": False, "error": "Invalid URL (hostname missing)"}
+
+    port = parsed.port or 443
     context = ssl.create_default_context()
-    
+
     try:
         with socket.create_connection((hostname, port), timeout=5) as sock:
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                cert = ssock.getpeercert()
-                valid_from = cert["notBefore"]
-                valid_to = cert["notAfter"]
+                cert = ssock.getpeercert() or {}
 
-                expire_date = datetime.datetime.strptime(valid_to, '%b %d %H:%M:%S %Y %Z')
-                is_valid = expire_date > datetime.datetime.now()
+                valid_from = cert.get("notBefore")
+                valid_to   = cert.get("notAfter")
+
+                # notAfter 예: 'Aug 19 23:59:59 2025 GMT'
+                expire_dt = None
+                if valid_to:
+                    try:
+                        expire_dt = _dt.strptime(valid_to, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=_tz.utc)
+                    except Exception:
+                        # 드문 포맷 차이 대응: 실패 시 만료 판단 불가로 처리
+                        expire_dt = None
+
+                now_utc = _dt.now(_tz.utc)
+                is_valid = bool(expire_dt and expire_dt > now_utc)
+
+                issuer_str  = format_name(cert.get("issuer"))
+                subject_str = format_name(cert.get("subject"))
 
                 return {
                     "https_supported": True,
-                    "issuer": cert.get("issuer", "N/A"),
+                    "issuer": issuer_str,
+                    "subject": subject_str,
                     "valid_from": valid_from,
                     "valid_to": valid_to,
                     "is_valid": is_valid,
                 }
 
     except Exception as e:
-        return {
-            "https_supported": False,
-            "error": str(e)
-        }
+        return {"https_supported": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------
+# (러너 호환) step/driver 시그니처용 래퍼 + 안전 출력
+# ---------------------------------------------------------------------
+def check_https_certificate_step(step):
+    """
+    러너가 security.check(driver, step)에서 호출할 수 있도록 만든 래퍼.
+    - step["url"]에서 URL을 꺼내 핵심 함수를 호출
+    - 결과를 표준 포맷으로 출력(문자열 인덱스 접근 없이 안전)
+    """
+    url = (step or {}).get("url")
+    res = check_https_certificate(url or "")
+
+    # 안전 출력: 키 미존재/None도 안전하게 처리
+    https_supported = res.get("https_supported")
+    error           = res.get("error")
+    issuer          = res.get("issuer") or "N/A"
+    subject         = res.get("subject") or "N/A"
+    valid_from      = res.get("valid_from") or "N/A"
+    valid_to        = res.get("valid_to") or "N/A"
+    is_valid        = res.get("is_valid")
+
+    print("\n[HTTPS 인증서 검사 결과]")
+    if https_supported:
+        print("  • HTTPS 적용 여부     : 적용")
+        print(f"  • 유효한 인증서       : {'예' if is_valid else '아니오/판단불가'}")
+        print(f"  • 발급자(issuer)      : {issuer}")
+        print(f"  • 주체(subject)       : {subject}")
+        print(f"  • 유효기간            : {valid_from}  ~  {valid_to}")
+    else:
+        print("  • HTTPS 적용 여부     : 미적용 또는 실패")
+        if error:
+            print(f"  • 오류 내용           : {error}")
+
+    return res
 
 
 # ---------------------------------------------------------------------
@@ -231,38 +322,6 @@ def check_file_encryption_static(step: Dict[str, Any], driver=None) -> Dict[str,
 
 
 # ---------------------------------------------------------------------
-# 출력 유틸: HTTPS 검사 결과 프린트
-# ---------------------------------------------------------------------
-def print_https_result(result: dict):
-    """
-    HTTPS 인증서 검사 결과를 읽기 쉽도록 출력하는 함수
-
-    Args:
-        result (dict): check_https_certificate() 함수의 반환 결과 딕셔너리.
-    """
-    print("\n[HTTPS 인증서 검사 결과]")
-    
-    supported = result.get("https_supported", False)
-    print(f"  • HTTPS 적용 여부     : {'적용됨' if supported else '미적용 또는 실패'}")
-
-    if not supported:
-        print(f"  • 오류 내용           : {result.get('error')}")
-        return
-
-    # 발급자 이름 정리
-    issuer_tuple = result.get("issuer", [])
-    issuer_parts = []
-    for entry in issuer_tuple:
-        for part in entry:
-            issuer_parts.append(part[1])
-    issuer_str = " / ".join(issuer_parts)
-
-    print(f"  • 인증서 발급자       : {issuer_str}")
-    print(f"  • 유효 기간           : {result.get('valid_from')} ~ {result.get('valid_to')}")
-    print(f"  • 인증서 유효성       : {'유효함' if result.get('is_valid') else '만료됨'}")
-
-
-# ---------------------------------------------------------------------
 # 기밀성: 보고서 해시 검증 확인 (+ 선택적 LLM 정적 리뷰)
 # ---------------------------------------------------------------------
 def report_hash_verify(step: Dict[str, Any], driver):
@@ -275,8 +334,9 @@ def report_hash_verify(step: Dict[str, Any], driver):
       - payload_path(optional):  생성 응답에서 report_id를 꺼낼 경로 ["data","id"] 등
     """
     name = "report_hash_verify"
+    label = "[보고서 해시 검증 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
-
+    
     try:
         # 1) report_id 확보
         report_id = step.get("report_id")
@@ -286,7 +346,8 @@ def report_hash_verify(step: Dict[str, Any], driver):
             report_id = resp.get("id") if isinstance(resp, dict) else None
 
         if not report_id:
-            return result(name, "NA", {"reason": "report_id 없음 또는 생성 불가(드라이버 미지원)"})
+            res = result(name, "NA", {"reason": "report_id 없음 또는 생성 불가(드라이버 미지원)"})
+            print_res(res, label); return res
 
         # 2) 서버 해시 조회
         server_hash = None
@@ -325,10 +386,12 @@ def report_hash_verify(step: Dict[str, Any], driver):
             )
             details["llm_review"] = llm_summary
 
-        return result(name, status, details, evidence)
+        res = result(name, status, details, evidence)
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
     
 
 # ---------------------------------------------------------------------
@@ -357,22 +420,27 @@ def download_integrity(step: Dict[str, Any], driver):
       - server_signature: get_file_signature(file_id)->dict, verify_signature(blob, sig_info)->bool
     """
     name = "file_download_integrity_check"
+    label = "[파일 다운로드 무결성 검사 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         file_id = step.get("file_id")
         if not file_id:
-            return result(name, "NA", {"reason": "file_id 미제공"})
+            res = result(name, "NA", {"reason": "file_id 미제공"})
+            print_res(res, label); return res
         if is_pw:
-            return result(name, "NA", {"reason": "Playwright 모드에서는 바이트 단위 검증 미지원"})
+            res = result(name, "NA", {"reason": "Playwright 모드에서는 바이트 단위 검증 미지원"})
+            print_res(res, label); return res
 
         if not hasattr(driver, "download_file"):
-            return result(name, "NA", {"reason": "driver.download_file 미구현"})
+            res = result(name, "NA", {"reason": "driver.download_file 미구현"})
+            print_res(res, label); return res
 
         strategy = step.get("strategy", "hash")
         blob = driver.download_file(file_id)
         if not isinstance(blob, (bytes, bytearray)):
-            return result(name, "NA", {"reason": "다운로드 바이트 획득 실패"})
+            res = result(name, "NA", {"reason": "다운로드 바이트 획득 실패"})
+            print_res(res, label); return res
 
         # --- 전략별 분기 ---
         if strategy == "size_mime_magic":
@@ -411,7 +479,7 @@ def download_integrity(step: Dict[str, Any], driver):
             else: evid.append(f"Content-Type 불일치 가능성: type={content_type}, magic={detected_magic}")
 
             status = "PASS" if (ok_len and ok_type) else ("WARN" if ok_len or ok_type else "FAIL")
-            return result(name, status, details, evid)
+            res = result(name, status, details, evid); print_res(res, label); return res
 
         elif strategy == "format_basic":
             details = {"file_id": file_id}
@@ -425,68 +493,76 @@ def download_integrity(step: Dict[str, Any], driver):
                 ok_end   = bytes(blob).rstrip().endswith(b"%%EOF")
                 status = "PASS" if (ok_start and ok_end) else ("WARN" if ok_start or ok_end else "FAIL")
                 evid.append(f"PDF 서명/EOF: start={ok_start}, eof={ok_end}")
-                return result(name, status, details, evid)
+                res = result(name, status, details, evid); print_res(res, label); return res
 
             if magic == "zip":
                 try:
                     zf = zipfile.ZipFile(io.BytesIO(bytes(blob)))
-                    bad = zf.testzip()  # 손상된 항목 이름 반환, 정상이면 None
+                    bad = zf.testzip()
                     details["zip_bad_entry"] = bad
                     if bad is None:
-                        return result(name, "PASS", details, ["ZIP 구조/CRC 정상"])
-                    return result(name, "FAIL", details, [f"ZIP 손상 항목: {bad}"])
+                        res = result(name, "PASS", details, ["ZIP 구조/CRC 정상"]); print_res(res, label); return res
+                    res = result(name, "FAIL", details, [f"ZIP 손상 항목: {bad}"]); print_res(res, label); return res
                 except Exception as ex:
-                    return result(name, "FAIL", details, [f"ZIP 열기 실패: {ex}"])
+                    res = result(name, "FAIL", details, [f"ZIP 열기 실패: {ex}"]); print_res(res, label); return res
 
             # 기타 포맷: 최소한 길이>0 정도만
             status = "PASS" if len(blob) > 0 else "FAIL"
             evid.append("알 수 없는 포맷: 최소 바이트 존재 여부만 확인")
-            return result(name, status, details, evid)
+            res = result(name, status, details, evid); print_res(res, label); return res
 
         elif strategy == "range_consistency":
             if not hasattr(driver, "download_range"):
-                return result(name, "NA", {"reason": "driver.download_range 미구현"})
+                res = result(name, "NA", {"reason": "driver.download_range 미구현"})
+                print_res(res, label); return res
             total = len(blob)
             mid = total // 2
-            part1 = driver.download_range(file_id, 0, mid)          # [0, mid)
-            part2 = driver.download_range(file_id, mid, total)      # [mid, total)
+            part1 = driver.download_range(file_id, 0, mid)
+            part2 = driver.download_range(file_id, mid, total)
             if not isinstance(part1, (bytes, bytearray)) or not isinstance(part2, (bytes, bytearray)):
-                return result(name, "NA", {"reason": "range 바이트 획득 실패"})
+                res = result(name, "NA", {"reason": "range 바이트 획득 실패"})
+                print_res(res, label); return res
             reassembled = bytes(part1) + bytes(part2)
             if reassembled == bytes(blob):
-                return result(name, "PASS", {"file_id": file_id, "size": total}, ["Range 재조합 == 전체 바이트"])
-            return result(name, "FAIL", {"file_id": file_id, "size": total}, ["Range 재조합 ≠ 전체 바이트"])
+                res = result(name, "PASS", {"file_id": file_id, "size": total}, ["Range 재조합 == 전체 바이트"])
+                print_res(res, label); return res
+            res = result(name, "FAIL", {"file_id": file_id, "size": total}, ["Range 재조합 ≠ 전체 바이트"])
+            print_res(res, label); return res
 
         elif strategy == "server_signature":
             # 서버가 서명/검증 API를 제공하는 경우(해시가 아니라 '서명'으로 무결성+출처 보증)
             if not (hasattr(driver, "get_file_signature") and hasattr(driver, "verify_signature")):
-                return result(name, "NA", {"reason": "서명 검증 API 미구현"})
-            sig_info = driver.get_file_signature(file_id)  # 예: {"alg":"ed25519","signature":"...","key_id":"k1"}
+                res = result(name, "NA", {"reason": "서명 검증 API 미구현"})
+                print_res(res, label); return res
+            sig_info = driver.get_file_signature(file_id)
             ok = bool(sig_info) and bool(driver.verify_signature(bytes(blob), sig_info))
             if ok:
-                return result(name, "PASS", {"file_id": file_id, "sig_alg": sig_info.get("alg")}, ["서명 검증 성공"])
-            return result(name, "FAIL", {"file_id": file_id, "sig_alg": (sig_info or {}).get("alg")}, ["서명 검증 실패"])
+                res = result(name, "PASS", {"file_id": file_id, "sig_alg": sig_info.get("alg")}, ["서명 검증 성공"])
+                print_res(res, label); return res
+            res = result(name, "FAIL", {"file_id": file_id, "sig_alg": (sig_info or {}).get("alg")}, ["서명 검증 실패"])
+            print_res(res, label); return res
 
-        else:  # "hash" 기본: 기존 동작 유지
+        else:  # "hash"
             if step.get("use_server_hash") and hasattr(driver, "get_file_hash"):
                 server_hash = driver.get_file_hash(file_id)
                 h1 = sha256_bytes(bytes(blob))
                 details = {"file_id": file_id, "client_hash": h1, "server_hash": server_hash}
                 if server_hash and server_hash == h1:
-                    return result(name, "PASS", details, [f"서버 해시 일치: {h1[:8]}..."])
+                    res = result(name, "PASS", details, [f"서버 해시 일치: {h1[:8]}..."]); print_res(res, label); return res
                 else:
-                    return result(name, "FAIL", details, ["서버 해시 불일치 또는 미노출"])
+                    res = result(name, "FAIL", details, ["서버 해시 불일치 또는 미노출"]); print_res(res, label); return res
             else:
                 # 대체: 2회 다운로드 동일성 (바이트 비교, 해시 불필요)
                 blob2 = driver.download_file(file_id)
                 same = isinstance(blob2, (bytes, bytearray)) and (bytes(blob2) == bytes(blob))
                 details = {"file_id": file_id, "size": len(blob)}
                 if same:
-                    return result(name, "PASS", details, ["2회 다운로드 바이트 동일성 확인 PASS"])
-                return result(name, "WARN", details, ["서버 해시 미제공 + 2회 동일성 검증 실패"])
+                    res = result(name, "PASS", details, ["2회 다운로드 바이트 동일성 확인 PASS"]); print_res(res, label); return res
+                res = result(name, "WARN", details, ["서버 해시 미제공 + 2회 동일성 검증 실패"]); print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
 
 
 # ---------------------------------------------------------------------
@@ -509,17 +585,20 @@ def input_validation(step: Dict[str, Any], driver):
       - driver.post_json(endpoint, payload) -> {"status": int, "json": {...}, "text": "..."}
     """
     name = "input_validation_check"
+    label = "[입력값 검증 처리 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw or not hasattr(driver, "post_json"):
-            return result(name, "NA", {"reason": "백엔드 드라이버 post_json 필요"})
+            res = result(name, "NA", {"reason": "백엔드 드라이버 post_json 필요"})
+            print_res(res, label); return res
 
         endpoint = step.get("endpoint")
         invalids = step.get("invalid_payloads", [])
         expect = set(step.get("expect_status", [400, 422]))
         if not endpoint or not invalids:
-            return result(name, "NA", {"reason": "endpoint/invalid_payloads 미지정"})
+            res = result(name, "NA", {"reason": "endpoint/invalid_payloads 미지정"})
+            print_res(res, label); return res
 
         fails = []
         passes = 0
@@ -535,10 +614,12 @@ def input_validation(step: Dict[str, Any], driver):
 
         status_final = "PASS" if passes == len(invalids) else ("WARN" if passes > 0 else "FAIL")
         details = {"tested": len(invalids), "passed": passes, "failed_cases": fails}
-        return result(name, status_final, details, evid)
+        res = result(name, status_final, details, evid)
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
     
 
 # ---------------------------------------------------------------------
@@ -556,14 +637,17 @@ def report_audit_trail(step: Dict[str, Any], driver):
       - driver.fetch_audit(query) -> List[Dict]
     """
     name = "report_audit_trail_check"
+    label = "[감사 로그 기록 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw:
-            return result(name, "NA", {"reason": "감사 로그 API 확인은 백엔드 드라이버 필요"})
+            res = result(name, "NA", {"reason": "감사 로그 API 확인은 백엔드 드라이버 필요"})
+            print_res(res, label); return res
 
         if not hasattr(driver, "create_report") or not hasattr(driver, "fetch_audit"):
-            return result(name, "NA", {"reason": "driver.create_report/fetch_audit 미구현"})
+            res = result(name, "NA", {"reason": "driver.create_report/fetch_audit 미구현"})
+            print_res(res, label); return res
 
         create_payload = step.get("create_report", {})
         report = driver.create_report(create_payload)
@@ -577,11 +661,14 @@ def report_audit_trail(step: Dict[str, Any], driver):
                 break
 
         if found:
-            return result(name, "PASS", {"audit_count": len(audits or [])}, ["user_id,timestamp 포함 로그 발견"])
-        return result(name, "FAIL", {"audit_count": len(audits or [])}, ["필수 필드(user_id,timestamp) 누락"])
+            res = result(name, "PASS", {"audit_count": len(audits or [])}, ["user_id,timestamp 포함 로그 발견"])
+        else:
+            res = result(name, "FAIL", {"audit_count": len(audits or [])}, ["필수 필드(user_id,timestamp) 누락"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
     
 
 # ---------------------------------------------------------------------
@@ -602,32 +689,39 @@ def report_lock_immutable(step: Dict[str, Any], driver):
       - driver.update_report(report_id, payload) -> {"status": int, ...}
     """
     name = "report_submission_immutability_check"
+    label = "[리포트 불변성(제출 후 수정 불가) 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw:
-            return result(name, "NA", {"reason": "제출/수정 차단 확인은 백엔드 드라이버 필요"})
+            res = result(name, "NA", {"reason": "제출/수정 차단 확인은 백엔드 드라이버 필요"})
+            print_res(res, label); return res
 
         if not hasattr(driver, "update_report"):
-            return result(name, "NA", {"reason": "driver.update_report 미구현"})
+            res = result(name, "NA", {"reason": "driver.update_report 미구현"})
+            print_res(res, label); return res
 
         rid = step.get("report_id")
         if not rid:
-            return result(name, "NA", {"reason": "report_id 미지정"})
+            res = result(name, "NA", {"reason": "report_id 미지정"})
+            print_res(res, label); return res
 
         if step.get("submit") and hasattr(driver, "submit_report"):
             driver.submit_report(rid)
 
         resp = driver.update_report(rid, step.get("edit_attempt", {"title": "x"}))
-        status = int(resp.get("status", 0))
-        if status in (401, 403, 423):  # 423: Locked
-            return result(name, "PASS", {"update_status": status}, ["제출 이후 수정 차단 확인"])
-        elif 200 <= status < 300:
-            return result(name, "FAIL", {"update_status": status}, ["제출 이후에도 수정 성공"])
-        return result(name, "WARN", {"update_status": status}, ["명확한 차단 코드 아님"])
+        status_code = int(resp.get("status", 0))
+        if status_code in (401, 403, 423):
+            res = result(name, "PASS", {"update_status": status_code}, ["제출 이후 수정 차단 확인"])
+        elif 200 <= status_code < 300:
+            res = result(name, "FAIL", {"update_status": status_code}, ["제출 이후에도 수정 성공"])
+        else:
+            res = result(name, "WARN", {"update_status": status_code}, ["명확한 차단 코드 아님"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
     
     
 # ---------------------------------------------------------------------
@@ -646,14 +740,17 @@ def admin_audit_view(step: Dict[str, Any], driver):
       - driver.fetch_admin_logs(query) -> List[Dict]
     """
     name = "admin_activity_log_view_check"
+    label = "[관리자 활동 이력 조회 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw:
-            return result(name, "NA", {"reason": "로그 API 확인은 백엔드 드라이버 필요"})
+            res = result(name, "NA", {"reason": "로그 API 확인은 백엔드 드라이버 필요"})
+            print_res(res, label); return res
 
         if not hasattr(driver, "fetch_admin_logs"):
-            return result(name, "NA", {"reason": "driver.fetch_admin_logs 미구현"})
+            res = result(name, "NA", {"reason": "driver.fetch_admin_logs 미구현"})
+            print_res(res, label); return res
 
         logs = driver.fetch_admin_logs(step.get("query", {"limit": 10}))
         req = set(step.get("require_fields", ["id", "action", "timestamp"]))
@@ -663,14 +760,16 @@ def admin_audit_view(step: Dict[str, Any], driver):
             ok = all(k in sample for k in req)
 
         if ok:
-            return result(name, "PASS", {"count": len(logs)}, ["필수 필드 포함 로그 조회 성공"])
+            res = result(name, "PASS", {"count": len(logs)}, ["필수 필드 포함 로그 조회 성공"])
         elif isinstance(logs, list):
-            return result(name, "WARN", {"count": len(logs)}, ["로그는 있으나 필수 필드 누락"])
+            res = result(name, "WARN", {"count": len(logs)}, ["로그는 있으나 필수 필드 누락"])
         else:
-            return result(name, "FAIL", {}, ["로그 조회 실패 또는 빈 결과"])
+            res = result(name, "FAIL", {}, ["로그 조회 실패 또는 빈 결과"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
 
 
 # ---------------------------------------------------------------------
@@ -689,11 +788,13 @@ def action_logging(step: Dict[str, Any], driver):
       - driver.fetch_admin_logs(query) -> List[Dict]
     """
     name = "log_actor_presence_check"
+    label = "[로그 주체 기록 여부 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw or not hasattr(driver, "fetch_admin_logs"):
-            return result(name, "NA", {"reason": "백엔드 드라이버 필요"})
+            res = result(name, "NA", {"reason": "백엔드 드라이버 필요"})
+            print_res(res, label); return res
 
         actor_keys = step.get("actor_keys", ["user_id", "user_email", "actor"])
         logs = driver.fetch_admin_logs(step.get("query", {"limit": 20})) or []
@@ -703,16 +804,17 @@ def action_logging(step: Dict[str, Any], driver):
                 missing += 1
 
         if not logs:
-            return result(name, "FAIL", {"count": 0}, ["로그가 비어 있음"])
+            res = result(name, "FAIL", {"count": 0}, ["로그가 비어 있음"]); print_res(res, label); return res
         if missing == 0:
-            return result(name, "PASS", {"count": len(logs)}, ["모든 로그에 주체 식별 포함"])
+            res = result(name, "PASS", {"count": len(logs)}, ["모든 로그에 주체 식별 포함"]); print_res(res, label); return res
         ratio = missing / max(1, len(logs))
         status = "WARN" if ratio < 0.2 else "FAIL"
-        return result(name, status, {"count": len(logs), "missing": missing},
-                       [f"주체 누락 비율 {ratio:.0%}"])
+        res = result(name, status, {"count": len(logs), "missing": missing}, [f"주체 누락 비율 {ratio:.0%}"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
 
 
 # ---------------------------------------------------------------------
@@ -733,37 +835,45 @@ def auth_login(step: Dict[str, Any], driver):
       - driver.get_authenticated(endpoint) -> {"status": int, ...}
     """
     name = "login_authentication_check"
+    label = "[로그인 인증 처리 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw:
-            return result(name, "NA", {"reason": "백엔드 드라이버 기반 확인 필요"})
+            res = result(name, "NA", {"reason": "백엔드 드라이버 기반 확인 필요"})
+            print_res(res, label); return res
 
         if not all(hasattr(driver, m) for m in ("get", "login", "get_authenticated")):
-            return result(name, "NA", {"reason": "driver.get/login/get_authenticated 필요"})
+            res = result(name, "NA", {"reason": "driver.get/login/get_authenticated 필요"})
+            print_res(res, label); return res
 
         protected = step.get("protected_endpoint")
         creds = step.get("credentials")
         if not protected or not creds:
-            return result(name, "NA", {"reason": "protected_endpoint/credentials 미설정"})
+            res = result(name, "NA", {"reason": "protected_endpoint/credentials 미설정"})
+            print_res(res, label); return res
 
         r1 = driver.get(protected)
         s1 = int(r1.get("status", 0))
-        blocked_ok = (s1 in (401, 403)) or (300 <= s1 < 400)  # 로그인 페이지 리다이렉트도 허용
+        blocked_ok = (s1 in (401, 403)) or (300 <= s1 < 400)
 
         r2 = driver.login(creds)
         s2 = int(r2.get("status", 0))
         if not (200 <= s2 < 300):
-            return result(name, "FAIL", {"pre_status": s1, "login_status": s2}, ["로그인 실패"])
+            res = result(name, "FAIL", {"pre_status": s1, "login_status": s2}, ["로그인 실패"])
+            print_res(res, label); return res
 
         r3 = driver.get_authenticated(protected)
         s3 = int(r3.get("status", 0))
         if blocked_ok and (200 <= s3 < 300):
-            return result(name, "PASS", {"pre_status": s1, "auth_status": s3}, ["인증 흐름 정상"])
-        return result(name, "FAIL", {"pre_status": s1, "auth_status": s3}, ["인증 흐름 비정상"])
+            res = result(name, "PASS", {"pre_status": s1, "auth_status": s3}, ["인증 흐름 정상"])
+        else:
+            res = result(name, "FAIL", {"pre_status": s1, "auth_status": s3}, ["인증 흐름 비정상"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
     
 
 # ---------------------------------------------------------------------
@@ -784,18 +894,21 @@ def login_rate_limit(step: Dict[str, Any], driver):
       - driver.login({"username":..., "password":...}) -> {"status": int, "text": "..."}
     """
     name = "login_rate_limit_check"
+    label = "[로그인 실패 시도 제한 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw or not hasattr(driver, "login"):
-            return result(name, "NA", {"reason": "백엔드 드라이버 login 필요"})
+            res = result(name, "NA", {"reason": "백엔드 드라이버 login 필요"})
+            print_res(res, label); return res
 
         user = step.get("username")
         wrong = step.get("wrong_password", "invalid")
         attempts = int(step.get("attempts", 7))
         cutoff = int(step.get("block_expected_after", 5))
         if not user:
-            return result(name, "NA", {"reason": "username 미설정"})
+            res = result(name, "NA", {"reason": "username 미설정"})
+            print_res(res, label); return res
 
         blocked = False
         statuses: List[int] = []
@@ -810,13 +923,16 @@ def login_rate_limit(step: Dict[str, Any], driver):
 
         details = {"attempts": len(statuses), "statuses": statuses}
         if blocked and len(statuses) >= cutoff:
-            return result(name, "PASS", details, ["실패 누적 후 차단/지연 동작 확인"])
+            res = result(name, "PASS", details, ["실패 누적 후 차단/지연 동작 확인"])
         elif blocked:
-            return result(name, "WARN", details, ["차단 동작은 있으나 기대 횟수 이전에 발동"])
-        return result(name, "FAIL", details, ["무제한 실패 허용 또는 차단 미동작"])
+            res = result(name, "WARN", details, ["차단 동작은 있으나 기대 횟수 이전에 발동"])
+        else:
+            res = result(name, "FAIL", details, ["무제한 실패 허용 또는 차단 미동작"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
 
 
 # ---------------------------------------------------------------------
@@ -838,23 +954,27 @@ def token_expiry(step: Dict[str, Any], driver):
       - (선택) driver.refresh_token(old_token) -> {"status": int, "token": "..."}
     """
     name = "token_expiry_handling_check"
+    label = "[인증 토큰 만료 처리 결과]"
     is_pw, mode = is_playwright(driver, step.get("mode"))
 
     try:
         if is_pw:
-            return result(name, "NA", {"reason": "백엔드 드라이버 필요"})
+            res = result(name, "NA", {"reason": "백엔드 드라이버 필요"})
+            print_res(res, label); return res
 
         if not hasattr(driver, "get_with_token"):
-            return result(name, "NA", {"reason": "driver.get_with_token 미구현"})
+            res = result(name, "NA", {"reason": "driver.get_with_token 미구현"})
+            print_res(res, label); return res
 
         endpoint = step.get("protected_endpoint")
         expired = step.get("expired_token")
         if not endpoint or not expired:
-            return result(name, "NA", {"reason": "protected_endpoint/expired_token 미지정"})
+            res = result(name, "NA", {"reason": "protected_endpoint/expired_token 미지정"})
+            print_res(res, label); return res
 
         r1 = driver.get_with_token(endpoint, expired)
         s1 = int(r1.get("status", 0))
-        if s1 in (401, 419, 440):  # 419/440: 만료/세션 타임아웃 관용
+        if s1 in (401, 419, 440):
             evid = ["만료 토큰 접근 거부 확인"]
             details = {"expired_status": s1}
 
@@ -870,13 +990,14 @@ def token_expiry(step: Dict[str, Any], driver):
                     details["post_refresh_status"] = s2
                     if 200 <= s2 < 300:
                         evid.append("리프레시 후 재접근 성공")
-                        return result(name, "PASS", details, evid)
+                        res = result(name, "PASS", details, evid); print_res(res, label); return res
                     else:
-                        return result(name, "WARN", details, evid + ["리프레시 후에도 접근 불가"])
-            # 리프레시 미체크/미지원인 경우에도 만료 차단만 확인되면 PASS
-            return result(name, "PASS", details, evid)
+                        res = result(name, "WARN", details, evid + ["리프레시 후에도 접근 불가"]); print_res(res, label); return res
+            res = result(name, "PASS", details, evid); print_res(res, label); return res
 
-        return result(name, "FAIL", {"expired_status": s1}, ["만료 토큰으로 접근 허용됨"])
+        res = result(name, "FAIL", {"expired_status": s1}, ["만료 토큰으로 접근 허용됨"])
+        print_res(res, label); return res
 
     except Exception as e:
-        return result(name, "ERROR", error=str(e))
+        res = result(name, "ERROR", error=str(e))
+        print_res(res, label); return res
