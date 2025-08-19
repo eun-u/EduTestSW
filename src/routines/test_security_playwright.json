@@ -1,0 +1,16 @@
+{
+  "name": "Security - Playwright (UI-only)",
+  "driver": "playwright",
+  "steps": [
+    {
+      "assessment": "security",
+      "type": "check_https_certificate",
+      "url": "https://naver.com"
+    },
+    {
+      "assessment": "security",
+      "type": "check_file_encryption_static",
+      "code_path": "uploads/upload_handler_encrypted.py"
+    }
+  ]
+}

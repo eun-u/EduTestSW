@@ -1,5 +1,9 @@
 # src/core/runner.py
-from assessments import performance, usability, functional, reliability, security, EDU_AccessTest
+# -*- coding: utf-8 -*-
+
+from assessments import performance, usability, functional, reliability, security
+# 1 from assessments import performance # 이 줄을 아래와 같이 수정!
+from assessments import EDU_TestDesign, EDU_LearningData, EDU_AccessTest
 
 assessments_map = {
     "functional": functional,
@@ -30,4 +34,5 @@ def run_routine(routine: dict, driver):
         try:
             handler.check(driver, step)
         except Exception as e:
+
             print(f"[ERROR] step {idx} 처리 중 예외 발생: {e}")
