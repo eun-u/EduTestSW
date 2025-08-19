@@ -1,0 +1,115 @@
+{
+  "name": "EDU_Interaction(Backend)",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "performance",
+      "type": "report_response_time",
+      "targets": [
+        { "name": "GET/posts", "method": "GET", "url": "https://jsonplaceholder.typicode.com/posts", "timeout": 5 },
+        { "name": "POST/posts", "method": "POST", "url": "https://jsonplaceholder.typicode.com/posts", "json": { "title": "foo", "body": "bar", "userId": 1 }, "timeout": 5 }
+      ],
+      "repeats": 5,
+      "warmups": 1,
+      "thresholds": { "*": 0.300 },
+      "rule": "p95<=threshold"
+    },
+    {
+      "assessment": "performance",
+      "type": "compare_processing_time",
+      "targets": [
+        { "name": "GET/posts",    "method": "GET", "url": "https://jsonplaceholder.typicode.com/posts", "timeout": 5 },
+        { "name": "GET/comments", "method": "GET", "url": "https://jsonplaceholder.typicode.com/comments", "timeout": 5 }
+      ],
+      "repeats": 10,
+      "warmups": 1,
+      "thresholds": { "*": 0.300 },
+      "rule": "p95<=threshold",
+      "metric": "avg",
+      "anomaly": {
+        "method": "robust_z",
+        "z_thresh": 0.8,
+        "factor_baseline": 1.01,
+        "min_samples": 3
+      }
+    },
+    {
+      "assessment": "security",
+      "type": "check_https_certificate",
+      "url": "https://naver.com"
+    },
+    {
+      "assessment": "functional",
+      "url": "https://www.w3schools.com/howto/howto_css_login_form.asp",
+      "element": "button",
+      "expected_text": "Login"
+    },
+
+    {
+      "assessment": "interaction",
+      "type": "messaging_latency",
+      "send_url": "http://192.168.0.221:8000/api/messages/send",
+      "inbox_url": "http://192.168.0.221:8000/api/messages/inbox?channel=course-101",
+      "auth": { "sender_token": "<TEACHER_TOKEN>", "receiver_token": "<STUDENT_TOKEN>" },
+      "headers": { "X-CLIENT": "EduTest" },
+      "message": { "client_msg_id": "msg-{i}", "channel": "course-101", "to": "studentA", "text": "[test] {i}" },
+      "id_field": "client_msg_id",
+      "list_path": "items",
+      "id_path": "client_msg_id",
+      "repeats": 1,
+      "poll_interval_s": 0.1,
+      "timeout_s": 5.0,
+      "threshold_s": 1.0,
+      "rule": "p95<=threshold"
+    },
+    {
+      "assessment": "interaction",
+      "type": "read_receipt_latency",
+      "mark_read_url": "http://192.168.0.221:8000/api/messages/mark_read",
+      "sender_thread_url": "http://192.168.0.221:8000/api/messages/thread?channel=course-101",
+      "auth": { "sender_token": "<TEACHER_TOKEN>", "receiver_token": "<STUDENT_TOKEN>" },
+      "headers": { "X-CLIENT": "EduTest" },
+      "thread_id_path": "thread.id",
+      "read_flag_path": "last_message.read",
+      "repeats": 1,
+      "threshold_s": 5.0
+    },
+    {
+      "assessment": "interaction",
+      "type": "broadcast_fanout",
+      "broadcast_url": "http://192.168.0.221:8000/api/announcements/send",
+      "status_url": "http://192.168.0.221:8000/api/announcements/status?broadcast_id={broadcast_id}",
+      "auth": { "sender_token": "<TEACHER_TOKEN>" },
+      "headers": { "X-CLIENT": "EduTest" },
+      "recipients": 300,
+      "success_rate_threshold": 0.99,
+      "avg_delay_threshold_s": 2.0,
+      "poll_interval_s": 0.2,
+      "timeout_s": 10.0
+    },
+    {
+      "assessment": "interaction",
+      "type": "dedup_guard",
+      "send_url": "http://192.168.0.221:8000/api/notifications/trigger",
+      "inbox_url": "http://192.168.0.221:8000/api/notifications/inbox",
+      "auth": { "user_token": "<STUDENT_TOKEN>" },
+      "headers": { "X-CLIENT": "EduTest", "X-USER": "studentA" },
+      "event_payload": { "event": "assignment_updated", "assignment_id": "A-123", "idempotency_key": "assignment_updated:A-123" },
+      "idempotency_key_path": "idempotency_key",
+      "list_path": "items",
+      "key_path": "event_key",
+      "triggers": 3,
+      "expect_max_per_user": 1
+    },
+    {
+      "assessment": "interaction",
+      "type": "cross_device_sync",
+      "web_state_url": "http://192.168.0.221:8000/api/messages/state/web?channel=course-101",
+      "mobile_state_url": "http://192.168.0.221:8000/api/messages/state/mobile?channel=course-101",
+      "auth": { "token": "<USER_TOKEN>" },
+      "headers": { "X-CLIENT": "EduTest" },
+      "key_path": "threads.0.last_message.read",
+      "threshold_s": 5.0
+    }
+  ]
+}

@@ -356,4 +356,4 @@ if __name__ == "__main__":
                 try:
                     server.kill()
                 except Exception:
-                    pass
+                    pass2

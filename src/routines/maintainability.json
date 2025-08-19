@@ -1,0 +1,60 @@
+{
+  "name": "유지보수성 검사 루틴",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "maintainability",
+      "type": "check_log_level",
+      "log_path": "sample.log",
+      "allowed_levels": ["INFO", "WARN", "ERROR"]
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_log_trace_fields",
+      "log_path": "sample.log",
+      "required_fields": ["trace_id", "request_id"],
+      "sample": 4000
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_feature_flag",
+      "env_key": "FEATURE_X",
+      "on_value": "ON"
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_config_separation",
+      "env_key": "APP_MODE",
+      "expect": "dev"
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_test_coverage",
+      "workdir": ".",
+      "min_coverage": 60
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_smoke_script",
+      "script": "scripts/smoke.bat"
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_circular_imports",
+      "src": "src"
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_duplicate_functions",
+      "src": "src",
+      "min_chars": 120
+    },
+    {
+      "assessment": "maintainability",
+      "type": "check_cyclomatic_complexity",
+      "path": "src",
+      "max_avg": 7.5,
+      "max_any": 15
+    }
+  ]
+}

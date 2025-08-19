@@ -1,0 +1,61 @@
+{
+  "name": "이식성 검사 루틴",
+  "driver": "backend",
+  "steps": [
+    {
+      "assessment": "portability",
+      "type": "check_env_variable",
+      "env_key": "DB_HOST",
+      "set_value": "127.0.0.1"
+    },
+    {
+      "assessment": "portability",
+      "type": "check_multi_env",
+      "urls": [
+        "https://jsonplaceholder.typicode.com/posts",
+        "https://jsonplaceholder.typicode.com/comments"
+      ]
+    },
+    {
+      "assessment": "portability",
+      "type": "check_platform_matrix",
+      "expected": [
+        { "os": "Windows", "python": "3.11" },
+        { "os": "Linux",   "python": "3.10" }
+      ]
+    },
+    {
+      "assessment": "portability",
+      "type": "check_install_script",
+      "script": "install.sh"
+    },
+    {
+      "assessment": "portability",
+      "type": "check_rollback",
+      "rollback_script": "rollback.sh"
+    },
+    {
+      "assessment": "portability",
+      "type": "check_upgrade",
+      "old_version": "1.0.0",
+      "new_version": "1.1.0"
+    },
+    {
+      "assessment": "portability",
+      "type": "check_service_replace",
+      "environments": ["AWS", "GCP"]
+    },
+    {
+      "assessment": "portability",
+      "type": "check_data_format",
+      "format": "json",
+      "sample": { "user": "test", "id": 1 }
+    },
+    {
+      "assessment": "portability",
+      "type": "check_functional_equal",
+      "base_result": { "status": "ok", "count": 3 },
+      "alt_result":  { "status": "ok", "count": 3 }
+    }
+  ]
+}

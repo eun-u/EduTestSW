@@ -1,0 +1,90 @@
+{
+  "name": "EDU_Interaction(Playwright)",
+  "driver": "playwright",
+  "page": {
+    "browser": "chromium",
+    "headless": true,
+    "viewport": { "width": 1280, "height": 800 }
+  },
+  "steps": [
+    {
+      "assessment": "performance",
+      "type": "report_response_time",
+      "actions": [
+        { "name": "OpenHome", "op": "goto", "url": "https://jsonplaceholder.typicode.com/" },
+        { "name": "OpenPosts", "op": "goto", "url": "https://jsonplaceholder.typicode.com/posts" }
+      ],
+      "repeats": 3,
+      "warmups": 1,
+      "thresholds": { "*": 1.200 },
+      "rule": "p95<=threshold"
+    },
+    {
+      "assessment": "performance",
+      "type": "compare_processing_time",
+      "actions": [
+        { "name": "GotoPosts", "op": "goto", "url": "https://jsonplaceholder.typicode.com/posts" },
+        { "name": "GotoComments", "op": "goto", "url": "https://jsonplaceholder.typicode.com/comments" }
+      ],
+      "repeats": 10,
+      "warmups": 1,
+      "thresholds": { "*": 1.200 },
+      "rule": "p95<=threshold",
+      "metric": "avg",
+      "anomaly": {
+        "method": "robust_z",
+        "z_thresh": 0.8,
+        "factor_baseline": 1.01,
+        "min_samples": 2
+      }
+    },
+    {
+      "assessment": "performance",
+      "type": "warn_timeout",
+      "actions": [
+        { "name": "GotoPosts", "op": "goto", "url": "https://jsonplaceholder.typicode.com/posts" },
+        { "name": "GotoComments", "op": "goto", "url": "https://jsonplaceholder.typicode.com/comments" }
+      ],
+      "repeats": 10,
+      "warmups": 1,
+      "thresholds": { "*": 0.050 },
+      "percent_limit": 10.0
+    },
+    {
+      "assessment": "security",
+      "type": "check_https_certificate",
+      "url": "https://naver.com"
+    },
+    {
+      "assessment": "usability",
+      "target": "https://www.w3schools.com/howto/howto_css_login_form.asp",
+      "params": { "check_selector": "button" }
+    },
+    {
+      "assessment": "interaction",
+      "type": "privacy_scope_check_ui",
+      "flows": [
+        {
+          "url": "https://lms.local/messages",
+          "checks": [
+            { "selector": "[data-testid='read-badge']", "visible": false }
+          ]
+        },
+        {
+          "url": "https://lms.local/instructor/messages",
+          "checks": [
+            { "selector": "[data-testid='read-badge']", "visible": true }
+          ]
+        }
+      ]
+    },
+    {
+      "assessment": "interaction",
+      "type": "accessibility_labels",
+      "targets": [
+        { "url": "https://lms.local/messages", "selectors": ["button[aria-label]", "img[alt]"] },
+        { "url": "https://lms.local/live", "selectors": ["[role='button']", "[aria-live]"] }
+      ]
+    }
+  ]
+}
