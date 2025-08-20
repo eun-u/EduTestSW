@@ -39,6 +39,7 @@ from src.llm_clients.file_encryption_client import analyze_code_for_encryption
 import io, zipfile
 import hashlib
 import json
+from colorama import Fore, Style
 
 # 선택적: LLM 클라이언트가 있을 때만 사용
 try:
@@ -79,27 +80,33 @@ def sha256_bytes(b: bytes) -> str:
     h.update(b)
     return h.hexdigest()
 
-def detect_magic(b: bytes) -> str:
-    """아주 얕은 매직넘버 감지."""
-    if b.startswith(b"%PDF-"): return "pdf"
-    if b.startswith(b"\x89PNG\r\n\x1a\n"): return "png"
-    if b.startswith(b"\xff\xd8\xff"): return "jpg"
-    if b.startswith(b"GIF8"): return "gif"
-    if b.startswith(b"PK\x03\x04") or b.startswith(b"PK\x05\x06"): return "zip"
-    return "unknown"
+def color_status(status: str) -> str:
+    if status == "PASS":
+        return Fore.GREEN + status + Style.RESET_ALL
+    elif status == "FAIL":
+        return Fore.RED + status + Style.RESET_ALL
+    elif status == "WARN":
+        return Fore.YELLOW + status + Style.RESET_ALL
+    elif status == "ERROR":
+        return Fore.MAGENTA + status + Style.RESET_ALL
+    return status or "N/A"
 
-def print_res(res: Dict[str, Any], str):
-        print("\n" + str)
-        print(f"  • 상태            : {res.get('status')}")
-        if res.get("error"):
-            print(f"  • 오류            : {res.get('error')}")
-        if res.get("details"):
-            print("  • 상세")
-            print(json.dumps(res["details"], ensure_ascii=False, indent=2))
-        if res.get("evidence"):
-            print("  • 근거")
-            for e in res["evidence"]:
-                print(f"    - {e}")
+def print_res(res: Dict[str, Any], title: str):
+    print("\n" + "="*70)
+    print(f"[SECURITY] {title}")
+    print("-"*70)
+    print(f"  • 상태       : {color_status(res.get('status'))}")
+    if res.get("error"):
+        print(f"  • 오류       : {res['error']}")
+    if res.get("details"):
+        print("  • 상세")
+        for k, v in res["details"].items():
+            print(f"     - {k:<15}: {v}")
+    if res.get("evidence"):
+        print("  • 근거")
+        for e in res["evidence"]:
+            print(f"     - {e}")
+    print("="*70)
 
 def format_name(name_tuple) -> str:
     """
@@ -249,31 +256,28 @@ def check_https_certificate_step(step):
     - step["url"]에서 URL을 꺼내 핵심 함수를 호출
     - 결과를 표준 포맷으로 출력(문자열 인덱스 접근 없이 안전)
     """
+def check_https_certificate_step(step):
     url = (step or {}).get("url")
     res = check_https_certificate(url or "")
 
-    # 안전 출력: 키 미존재/None도 안전하게 처리
-    https_supported = res.get("https_supported")
-    error           = res.get("error")
-    issuer          = res.get("issuer") or "N/A"
-    subject         = res.get("subject") or "N/A"
-    valid_from      = res.get("valid_from") or "N/A"
-    valid_to        = res.get("valid_to") or "N/A"
-    is_valid        = res.get("is_valid")
+    details = {
+        "https_supported": res.get("https_supported"),
+        "issuer": res.get("issuer") or "N/A",
+        "subject": res.get("subject") or "N/A",
+        "valid_from": res.get("valid_from") or "N/A",
+        "valid_to": res.get("valid_to") or "N/A",
+        "is_valid": res.get("is_valid"),
+        "error": res.get("error")
+    }
 
-    print("\n[HTTPS 인증서 검사 결과]")
-    if https_supported:
-        print("  • HTTPS 적용 여부     : 적용")
-        print(f"  • 유효한 인증서       : {'예' if is_valid else '아니오/판단불가'}")
-        print(f"  • 발급자(issuer)      : {issuer}")
-        print(f"  • 주체(subject)       : {subject}")
-        print(f"  • 유효기간            : {valid_from}  ~  {valid_to}")
-    else:
-        print("  • HTTPS 적용 여부     : 미적용 또는 실패")
-        if error:
-            print(f"  • 오류 내용           : {error}")
+    status = "PASS" if res.get("https_supported") else "FAIL"
+    if res.get("error"):
+        status = "ERROR"
 
-    return res
+    out = result("check_https_certificate", status, details)
+    print_res(out, "HTTPS 인증서 검사 결과")
+    return out
+
 
 
 # ---------------------------------------------------------------------
@@ -292,34 +296,34 @@ def check_file_encryption_static(step: Dict[str, Any], driver=None) -> Dict[str,
         dict: analyze_code_for_encryption 결과(printed도 함)
     """
     code_path = step.get("code_path")
-    if not code_path:
-        raise ValueError("[SECURITY > CONFIDENTIALITY] 'code_path'가 누락되었습니다.")
-    if not os.path.exists(code_path):
-        raise FileNotFoundError(f"[SECURITY > CONFIDENTIALITY] code_path가 존재하지 않습니다: {code_path}")
+    if not code_path or not os.path.exists(code_path):
+        res = result("check_file_encryption_static", "ERROR",
+                     error="code_path 없음 또는 파일 미존재")
+        print_res(res, "파일 암호화 정적 분석 결과")
+        return res
 
     try:
         with open(code_path, "r", encoding="utf-8") as f:
             code = f.read()
     except UnicodeDecodeError:
-        # 바이너리나 다른 인코딩일 수 있음 → latin-1로 재시도(깨져도 라인 패턴엔 영향 적음)
         with open(code_path, "r", encoding="latin-1", errors="replace") as f:
             code = f.read()
 
-    result = analyze_code_for_encryption(code)
-    
-    # ===== 원하는 출력 포맷 =====
-    verdict = "파일 암호화 됨" if result.get("encrypted") else "파일 암호화 되지 않음"
-    print("\n[파일 암호화 정적 분석 결과]")
-    print(f"- {verdict}")
-    # 근거 최소 표시
-    ev = result.get("evidence", [])
-    if ev:
-        first = ev[0]
-        print(f"- 근거: L{first.get('line')}: {first.get('text')}")
-    else:
-        print(f"- 근거: {result.get('reason', '근거 부족')}")
-    
-    return result
+    analysis = analyze_code_for_encryption(code)
+    verdict = "파일 암호화 됨" if analysis.get("encrypted") else "파일 암호화 되지 않음"
+
+    evidence = []
+    if analysis.get("evidence"):
+        first = analysis["evidence"][0]
+        evidence.append(f"L{first.get('line')}: {first.get('text')}")
+    elif analysis.get("reason"):
+        evidence.append(analysis["reason"])
+
+    res = result("check_file_encryption_static", "PASS" if analysis.get("encrypted") else "FAIL",
+                 {"encrypted": analysis.get("encrypted")},
+                 evidence)
+    print_res(res, "파일 암호화 정적 분석 결과")
+    return res
 
 
 # ---------------------------------------------------------------------
