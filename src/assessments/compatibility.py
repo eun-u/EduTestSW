@@ -72,7 +72,7 @@ def check_os_compatibility(driver: WebDriver, url: str, os_name: str, test_featu
                 results["passed"] = True
                 results["details"] = f"Main header is visible and present on {os_name}."
             else:
-                results["passed"] = False
+                results["details"] = False
                 results["details"] = f"Main header is not visible on {os_name}, indicating a layout issue."
         
         else:
@@ -88,7 +88,7 @@ def check_os_compatibility(driver: WebDriver, url: str, os_name: str, test_featu
     return results
 
 def check_loading_anxiety(driver: WebDriver, url: str):
-    # 느린 로딩 시 사용자 불안 최소화
+    # 느린 로딩 시 사용자 불안 최소화 검증
     results = {"test_name": "로딩 불안 최소화 테스트", "passed": False, "details": []}
     try:
         driver.get(url)

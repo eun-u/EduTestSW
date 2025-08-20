@@ -169,7 +169,7 @@ def check_continue_watching(driver: WebDriver, url: str):
     return results
 
 def check(driver: WebDriver, step: dict):
-    # 메인 함수
+    # 메인 함수: step의 'test_type'에 따라 알맞은 테스트 함수를 호출
     test_type = step.get("test_type")
     url = step.get("url")
 
