@@ -1,6 +1,6 @@
 [
     {
-        "name": "온라인 강의 사용성 테스트",
+        "name": "사용성 테스트",
         "driver": "playwright",
         "steps": [
             {
