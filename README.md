@@ -41,6 +41,16 @@ python run_routine.py
 
 ---
 
+EduTestSW/
+├── run_routine.py         # 실행 스크립트
+├── src/
+│   ├── assessments/       # 품질 특성별 검사 모듈
+│   ├── core/              # 파서, 드라이버, 러너
+│   └── routines/          # JSON 테스트 시나리오
+├── requirements.txt       # 의존성 패키지
+└── README.md              # 프로젝트 설명 문서
+
+
 ## 커밋 메세지 규칙
 
 **feat**   새로운 기능에 대한 커밋
