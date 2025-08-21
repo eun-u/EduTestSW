@@ -1,5 +1,5 @@
 {
-  "name": "기능성 검사 - 폼 기반 주요 기능 확인 (Backend)",
+  "name": "[SW] Functional Suitability 기능적합성",
   "driver": "backend",
   "steps": [
     {

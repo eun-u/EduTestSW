@@ -1,5 +1,5 @@
 {
-  "name": "Security - Playwright (UI-only)",
+  "name": "[SW] Security 보안성",
   "driver": "playwright",
   "steps": [
     {

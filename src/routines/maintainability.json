@@ -1,5 +1,5 @@
 {
-  "name": "유지보수성 검사 루틴",
+  "name": "[SW] Maintainability 유지보수성",
   "driver": "backend",
   "steps": [
     {

@@ -22,6 +22,7 @@ import math
 import re
 import statistics
 from datetime import datetime, timedelta
+from colorama import Fore, Style, init
 
 # (선택) scikit-learn이 있으면 IsolationForest 사용
 try:
@@ -81,41 +82,92 @@ def print_module_result(result: Dict[str, Any]):
         print(f"  - {name:24s} [{st}]")
 
 
+def color_status(status: str) -> str:
+    """
+    상태 문자열에 색상을 입혀 반환
+    """
+    s = (status or "N/A").upper()
+    if s == "PASS":
+        return Fore.GREEN + s + Style.RESET_ALL
+    elif s == "FAIL":
+        return Fore.RED + s + Style.RESET_ALL
+    elif s == "WARN":
+        return Fore.YELLOW + s + Style.RESET_ALL
+    elif s == "ERROR":
+        return Fore.MAGENTA + s + Style.RESET_ALL
+    return s
+
+
 def print_step_result(res: Dict[str, Any]) -> None:
     """각 함수 내부에서 즉시 호출되는 단일 스텝 요약 + 짧은 설명."""
     name = res.get("name", "(unknown)")
-    st = res.get("status", "pass").upper()
-    line = f"[LEARNING_DATA][STEP] {name:24s} [{st}]"
+    status = (res.get("status", "pass") or "pass").upper()
 
-    for k in ("coverage", "missing_users", "invalid_count", "zero_only_users",
-              "anomaly_count", "completion_rate"):
-        if k in res:
-            line += f" {k}={res[k]}"
-    print(line)
-    note = brief_explain(res)
-    if note:
-        print(f"    note: {note}")
+    detail_keys: List[str] = [
+        "coverage",
+        "missing_users",
+        "invalid_count",
+        "zero_only_users",
+        "anomaly_count",
+        "completion_rate",
+    ]
+    details: Dict[str, Any] = {k: res[k] for k in detail_keys if k in res}
+
+    evidence: List[str] = []
+    try:
+        note = brief_explain(res)
+        if note:
+            evidence.insert(0, f"note: {note}")
+    except NameError:
+        if res.get("note"):
+            evidence.insert(0, f"note: {res['note']}")
+
     for key in ("issues", "details", "missing_map", "anomalies", "fails"):
         if res.get(key):
-            print(f"    {key}(sample): {str(res[key])[:300]}")
-    print()
+            evidence.append(f"{key}(sample): {str(res[key])[:300]}")
+
+    line_w = 70
+    print("\n" + "=" * line_w)
+    print(f"[LEARNING_DATA] {name}")
+    print("-" * line_w)
+
+    try:
+        colored = color_status(status)
+    except NameError:
+        colored = status
+    print(f"  • 상태       : {colored}")
+
+    if res.get("error"):
+        print(f"  • 오류       : {res['error']}")
+
+    if details:
+        print("  • 상세")
+        for k, v in details.items():
+            print(f"     - {k:<15}: {v}")
+
+    if evidence:
+        print("  • 근거")
+        for e in evidence:
+            print(f"     - {e}")
+
+    print("=" * line_w)
 
 
 def brief_explain(res: Dict[str, Any]) -> str:
     name, st = res.get("name"), res.get("status")
-    if name == "history_presence":
+    if name == "학습 이력 저장 여부":
         if st == "pass":
             return "모든 대상 사용자에 대해 학습 이력이 존재합니다."
         return "일부 사용자에 대한 학습 이력이 누락되어 있습니다."
-    if name == "progress_completeness":
+    if name == "학습 진도율 누락 감지":
         if st == "pass":
             return "진도율 데이터가 정상이며 추적 가능합니다."
         return "결측/범위외/0%만 존재하는 진도율이 확인되었습니다."
-    if name == "activity_log_adequacy":
+    if name == "학습 활동 로그 적절성 평가":
         if st == "pass":
             return "필수 활동 로그가 충족되며 이상치가 없습니다."
         return "필수 이벤트 누락 또는 이상치 패턴이 감지되었습니다."
-    if name == "completion_rule_check":
+    if name == "학습 완료 조건 일치 여부":
         if st == "pass":
             return "정의된 완료 규칙이 모두 충족됩니다."
         return "일부 사용자가 완료 조건을 만족하지 못했습니다."
@@ -167,7 +219,7 @@ def history_presence(step: Dict[str, Any]) -> Dict[str, Any]:
     status = "pass" if len(missing) == 0 else (
         "warn" if coverage >= 0.9 else "fail")
     res = {
-        "name": "history_presence",
+        "name": "학습 이력 저장 여부",
         "status": status,
         "coverage": coverage,
         "missing_users": len(missing),
@@ -230,7 +282,7 @@ def progress_completeness(step: Dict[str, Any]) -> Dict[str, Any]:
             stale_users), "ids": list(stale_users)[:10]})
 
     res = {
-        "name": "progress_completeness",
+        "name": "학습 진도율 누락 감지",
         "status": status,
         "invalid_count": invalid,
         "zero_only_users": len(zero_only_users),
@@ -360,7 +412,7 @@ def activity_log_adequacy(step: Dict[str, Any]) -> Dict[str, Any]:
                           "count_users": len(anomalies)})
 
     res = {
-        "name": "activity_log_adequacy",
+        "name": "학습 활동 로그 적절성 평가",
         "status": status,
         "missing_map": dict(list(missing_map.items())[:20]),
         "anomaly_count": len(anomalies),
@@ -420,7 +472,7 @@ def completion_rule_check(step: Dict[str, Any]) -> Dict[str, Any]:
     status = "pass" if not fails else (
         "warn" if completion_rate >= 0.9 else "fail")
     res = {
-        "name": "completion_rule_check",
+        "name": "학습 완료 조건 일치 여부",
         "status": status,
         "completion_rate": completion_rate,
         "fails": fails[:30]

@@ -1,5 +1,5 @@
 {
-  "name": "TestDesign - 시험 및 평가 설계",
+  "name": "[EDU] TestDesign 시험 및 평가 설계",
   "driver": "playwright",
   "steps": [
     {
