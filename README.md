@@ -29,8 +29,10 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
+```bash
 npm install playwright
 npx playwright install
+```
 ---
 
 ## ▶️ 실행 방법
