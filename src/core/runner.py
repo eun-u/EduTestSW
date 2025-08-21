@@ -1,9 +1,7 @@
-# src/core/runner.py
 # -*- coding: utf-8 -*-
 
-from assessments import performance, usability, functional, reliability, security, portability, maintainability, EDU_Interaction, compatibility
-# 1 from assessments import performance # 이 줄을 아래와 같이 수정!
-from assessments import EDU_TestDesign, EDU_LearningData, EDU_AccessTest
+from src.assessments import performance, usability, functional, reliability, security, portability, maintainability, EDU_Interaction, compatibility
+from src.assessments import EDU_TestDesign, EDU_LearningData, EDU_AccessTest
 
 assessments_map = {
     "functional": functional,
@@ -15,10 +13,11 @@ assessments_map = {
     "portability":     portability,
     "maintainability": maintainability,
     "interaction": EDU_Interaction,
-    "test_design" : EDU_TestDesign,
-    "learning_data" : EDU_LearningData,
-    "compatibility" : compatibility
+    "test_design": EDU_TestDesign,
+    "learning_data": EDU_LearningData,
+    "compatibility": compatibility
 }
+
 
 def run_routine(routine: dict, driver):
     steps = routine.get("steps", [])

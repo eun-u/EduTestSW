@@ -1,5 +1,3 @@
-# YoonSooYoung (윤수영)
-
 # src/assessments/reliability.py
 """
 ========== 신뢰성 테스트 Reliability ==========
@@ -15,6 +13,7 @@
 | 리소스 모니터링 | Resource Monitoring |
 - `resource_monitor`:          테스트 중 시스템 및 프로세스(CPU, 메모리, 네트워크)의
                              사용량을 실시간으로 수집합니다.
+                             
 ====================================
 """
 import asyncio
@@ -27,6 +26,53 @@ import httpx
 import psutil
 import threading
 from datetime import datetime
+from colorama import Fore, Style
+
+
+TITLE_MAP = {
+    "stress_result":   "스트레스/부하 테스트 결과",
+    "recovery_result": "복구 테스트 결과",
+    "resources":       "리소스 모니터링 스냅샷",
+}
+
+# =====================================================================
+# 출력 모듈
+# =====================================================================
+def color_status(status: str) -> str:
+    if status == "PASS":
+        return Fore.GREEN + status + Style.RESET_ALL
+    elif status == "FAIL":
+        return Fore.RED + status + Style.RESET_ALL
+    elif status == "WARN":
+        return Fore.YELLOW + status + Style.RESET_ALL
+    elif status == "ERROR":
+        return Fore.MAGENTA + status + Style.RESET_ALL
+    return status or "N/A"
+
+def print_block(tag: str,
+                 title_key: str,
+                 status: str,
+                 reason: Optional[str] = None,
+                 details: Optional[Dict[str, Any]] = None,
+                 evidence: Optional[List[str]] = None,
+                 width: int = 70) -> None:
+    title = TITLE_MAP.get(title_key, title_key)
+    print("\n" + "=" * width)
+    print(f"[{tag}] {title}")
+    print("-" * width)
+    print(f"  • 상태       : {color_status(status)}")
+    if reason:
+        print(f"  • 이유       : {reason}")
+    if details:
+        print("  • 상세")
+        for k, v in details.items():
+            print(f"     - {k:<15}: {v}")
+    if evidence:
+        print("  • 근거")
+        for e in evidence:
+            print(f"     - {e}")
+    print("=" * width)
+
 
 # =====================================================================
 # 엔트리 포인트: 신뢰성 테스트 라우팅
@@ -38,17 +84,17 @@ def check(driver: Any, step: Dict[str, Any]) -> None:
     """
     mode = step.get("mode")
     if mode not in {"stress", "load"}:
-        print("[reliability] Error: mode must be 'stress' or 'load'.")
+        print("[RELIABILITY] Error: mode must be 'stress' or 'load'.")
         return
 
-    print("[reliability] 스트레스 테스트 시작")
+    print("[RELIABILITY] 스트레스 테스트 시작")
     try:
         metrics = asyncio.run(_stress_phase(step))
     except Exception as e:
-        print(f"[reliability] Stress test failed: {e}", file=sys.stderr)
+        print(f"[RELIABILITY] Stress test failed: {e}", file=sys.stderr)
         return
 
-    # 기존 상세 JSON 출력
+    '''# 기존 상세 JSON 출력
     print(json.dumps({"phase": "stress", **metrics}, ensure_ascii=False, indent=2))
 
     # 기존 SLA 판정 로그
@@ -66,31 +112,31 @@ def check(driver: Any, step: Dict[str, Any]) -> None:
         print(
             f"[FAIL][reliability] p95={metrics['latency_p95_ms']:.1f}ms (SLA {sla_p95:.1f}ms), "
             f"error_rate={metrics['error_rate']:.3f} (max {max_err:.3f})"
-        )
+        )'''
 
     # 요약 박스 출력
-    _print_stress_summary(metrics, step)
-    _print_resource_snapshot(metrics.get("resources"))
+    emit_stress_block(metrics, step)
+    emit_resource_block(metrics.get("resources"))
 
     # 복구 테스트 단계
     if step.get("recovery"):
-        print("[reliability] 복구 확인 단계 시작")
+        print("[RELIABILITY] 복구 확인 단계 시작")
         try:
             rec = asyncio.run(_recover_phase(step))
         except Exception as e:
-            print(f"[reliability] Recovery phase failed: {e}", file=sys.stderr)
+            print(f"[RELIABILITY] Recovery phase failed: {e}", file=sys.stderr)
             rec = {"recovery_checked": True, "within_sla": False, "last_latency_ms": None, "seconds_waited": 0}
 
         # 기존 상세 JSON 출력
-        print(json.dumps({"phase": "recovery", **rec}, ensure_ascii=False, indent=2))
+        #print(json.dumps({"phase": "recovery", **rec}, ensure_ascii=False, indent=2))
         
-        if rec.get("recovery_checked") and rec.get("within_sla") is True:
+        '''if rec.get("recovery_checked") and rec.get("within_sla") is True:
             print("[PASS][recovery] 헬스체크가 SLA 이내로 회복되었습니다.")
         elif rec.get("recovery_checked"):
-            print("[FAIL][recovery] 설정된 시간 내 SLA 이내로 회복하지 못했습니다.")
+            print("[FAIL][recovery] 설정된 시간 내 SLA 이내로 회복하지 못했습니다.")'''
 
         # 복구 요약 박스
-        _print_recovery_summary(rec, step)
+        emit_recovery_block(rec, step)
 
 
 # =====================================================================
@@ -433,70 +479,66 @@ def _aggregate_mon(mon: Dict[str, List[float]]) -> Dict[str, Any]:
         "samples": len(mon.get("system_cpu_pct", [])),
     }
 
-def _print_stress_summary(metrics: Dict[str, Any], step: Dict[str, Any]) -> None:
-    """스트레스 테스트 결과를 요약하여 박스 형태로 출력합니다."""
+def emit_stress_block(metrics: Dict[str, Any], step: Dict[str, Any]) -> None:
     sla_p95 = float(step.get("sla_ms_p95", 0))
     max_err = float(step.get("max_error_rate", 1.0))
     pass_latency = (metrics["latency_p95_ms"] <= sla_p95) if sla_p95 > 0 else True
     pass_error = (metrics["error_rate"] <= max_err)
-    overall = "PASS" if (pass_latency and pass_error) else "FAIL"
+    status = "PASS" if (pass_latency and pass_error) else "FAIL"
 
-    lines = [
-        _kv("Status", overall),
-        _kv("Requests", f"{metrics['total']} (errors {metrics['errors']})"),
-        _kv("Error Rate", _fmt_pct(metrics['error_rate'])),
-        _kv("Latency p50", _fmt_ms(metrics['latency_p50_ms'])),
-        _kv("Latency p95", _fmt_ms(metrics['latency_p95_ms'])),
-        _kv("Latency p99", _fmt_ms(metrics['latency_p99_ms'])),
-        _kv("Avg Latency", _fmt_ms(metrics['latency_avg_ms'])),
-    ]
-    if sla_p95 > 0:
-        lines.append(_kv("SLA p95", _fmt_ms(sla_p95)))
-    lines.append(_kv("Err threshold", f"{max_err:.3f}"))
+    details = {
+        "requests":        f"{metrics['total']} (errors {metrics['errors']})",
+        "error_rate":      f"{metrics['error_rate']*100:.1f}%",
+        "latency_p50":     f"{metrics['latency_p50_ms']:.1f} ms",
+        "latency_p95":     f"{metrics['latency_p95_ms']:.1f} ms",
+        "latency_p99":     f"{metrics['latency_p99_ms']:.1f} ms",
+        "latency_avg":     f"{metrics['latency_avg_ms']:.1f} ms",
+        "SLA_p95":         ("-" if sla_p95 <= 0 else f"{sla_p95:.1f} ms"),
+        "err_threshold":   f"{max_err:.3f}",
+    }
+    print_block("RELIABILITY", "stress_result", status, details=details)
 
-    _box("Reliability - Stress Summary", lines)
-
-def _print_recovery_summary(rec: Dict[str, Any], step: Dict[str, Any]) -> None:
-    """복구 테스트 결과를 요약하여 박스 형태로 출력합니다."""
+def emit_recovery_block(rec: Dict[str, Any], step: Dict[str, Any]) -> None:
     sla_ms = int((step.get("recovery") or {}).get("recovery_sla_ms", 300))
     checked = rec.get("recovery_checked")
     within = rec.get("within_sla")
-    status = "SKIP"
-    if checked:
+    if not checked:
+        status, reason = "SKIP", "recovery_checked=False"
+    else:
         status = "PASS" if within is True else "FAIL"
-    
-    lines = [
-        _kv("Status", status),
-        _kv("Within SLA", str(within)),
-        _kv("Last latency", _fmt_ms(rec.get("last_latency_ms"))),
-        _kv("Waited", f"{rec.get('seconds_waited', 0)} s"),
-        _kv("SLA (health)", _fmt_ms(sla_ms)),
-    ]
-    _box("Reliability - Recovery Summary", lines)
+        reason = None
 
-def _print_resource_snapshot(resources: Optional[dict]) -> None:
-    """리소스 모니터링 결과를 요약하여 박스 형태로 출력합니다."""
+    details = {
+        "within_sla":   str(within),
+        "last_latency": ("-" if rec.get("last_latency_ms") is None else f"{rec['last_latency_ms']:.1f} ms"),
+        "waited":       f"{rec.get('seconds_waited', 0)} s",
+        "SLA(health)":  f"{sla_ms:.1f} ms",
+    }
+    print_block("RELIABILITY", "recovery_result", status, reason=reason, details=details)
+
+def emit_resource_block(resources: Optional[dict]) -> None:
     if not resources or resources.get("samples", 0) == 0:
-        _box("Reliability - Resources", [
-            _kv("Samples", "0"),
-            _kv("Note", "No resource samples collected"),
-        ])
+        print_block("RELIABILITY", "resources", "SKIP",
+                     reason="No resource samples collected",
+                     details={"samples": 0})
         return
 
-    sc = resources.get("system_cpu_pct") or {}
-    pc = resources.get("process_cpu_pct") or {}
-    pm = resources.get("process_mem_mb") or {}
-    pt = resources.get("process_threads") or {}
-    ns = resources.get("net_sent_kb") or {}
-    nr = resources.get("net_recv_kb") or {}
+    def _triplet(d: dict, unit: str = "", pct=False):
+        if not d: return "avg - / p95 - / max -"
+        a, p, m = d.get("avg"), d.get("p95"), d.get("max")
+        if pct:
+            fmt = lambda x: "-" if x is None else f"{x:.1f}%"
+        else:
+            fmt = lambda x: "-" if x is None else f"{x:.1f}{unit}"
+        return f"avg {fmt(a)} / p95 {fmt(p)} / max {fmt(m)}"
 
-    lines = [
-        _kv("Samples", str(resources.get("samples", 0))),
-        _kv("System CPU", _fmt_triplet(sc, as_pct=True)),
-        _kv("Proc CPU", _fmt_triplet(pc, as_pct=True)),
-        _kv("Proc Mem", _fmt_triplet(pm, unit=" MB")),
-        _kv("Threads", _fmt_triplet(pt, unit="")),
-        _kv("Net TX", _fmt_triplet(ns, unit=" KB/s")),
-        _kv("Net RX", _fmt_triplet(nr, unit=" KB/s")),
-    ]
-    _box("Reliability - Resources", lines)
+    details = {
+        "samples":       resources.get("samples", 0),
+        "system_cpu":    _triplet(resources.get("system_cpu_pct") or {}, pct=True),
+        "proc_cpu":      _triplet(resources.get("process_cpu_pct") or {}, pct=True),
+        "proc_mem":      _triplet(resources.get("process_mem_mb") or {}, unit=" MB"),
+        "threads":       _triplet(resources.get("process_threads") or {}, unit=""),
+        "net_tx":        _triplet(resources.get("net_sent_kb") or {}, unit=" KB/s"),
+        "net_rx":        _triplet(resources.get("net_recv_kb") or {}, unit=" KB/s"),
+    }
+    print_block("RELIABILITY", "resources", "PASS", details=details)

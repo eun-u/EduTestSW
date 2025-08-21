@@ -1,5 +1,5 @@
 {
-  "name": "Performance - 통합 루틴",
+  "name": "[SW] Performance 실행효율성",
   "driver": "playwright",
   "page": {
     "browser": "chromium",

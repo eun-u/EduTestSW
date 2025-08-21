@@ -1,5 +1,5 @@
 {
-  "name": "EDU_AccessTest - Backend",
+  "name": "[EDU] AccessTest 접근성",
   "description": "BackendDriver를 사용하여 접근 제어(권한) 취약점을 테스트합니다.",
   "driver": "backend",
   "steps": [

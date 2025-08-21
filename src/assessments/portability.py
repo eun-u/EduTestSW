@@ -10,17 +10,60 @@
 - check_service_replace  : 서비스 대체 가능성(간이)
 - check_data_format      : 데이터 포맷 호환성(json/xml/csv 간이)
 - check_functional_equal : 치환 후 결과 동일성 비교
+
 =======================================
 """
 from typing import Dict, Any, List
-import os, subprocess, platform, json, requests
+import os
+import subprocess
+import platform
+import json
+import requests
 from io import StringIO
 import csv
 import xml.etree.ElementTree as ET
+from colorama import Fore, Style
+
+
+def color_status(status: str) -> str:
+    if status == "PASS":
+        return Fore.GREEN + status + Style.RESET_ALL
+    elif status == "FAIL":
+        return Fore.RED + status + Style.RESET_ALL
+    elif status == "WARN":
+        return Fore.YELLOW + status + Style.RESET_ALL
+    elif status == "ERROR":
+        return Fore.MAGENTA + status + Style.RESET_ALL
+    return status or "N/A"
+
+
+TITLE_MAP = {
+    "check_env_variable":     "환경변수 적용 가능 여부",
+    "check_multi_env":        "다중 환경 호환성 검증",
+    "check_platform_matrix":  "플랫폼 지원 매트릭스 검증",
+    "check_install_script":   "원클릭 설치 확인",
+    "check_rollback":         "설치 롤백 절차 검증",
+    "check_upgrade":          "업그레이드/다운그레이드 지원 여부",
+    "check_service_replace":  "서비스 대체 가능성",
+    "check_data_format":      "데이터 포맷 호환성",
+    "check_functional_equal": "치환 후 결과 동일성 비교",
+}
+
 
 def print_result(name: str, ok: bool, reason: str):
+    title = TITLE_MAP.get(name, name)
     status = "PASS" if ok else "FAIL"
-    print(f"[PORTABILITY] {name:25s} [{status}] {reason}")
+    width = 70
+
+    print("\n" + "=" * width)
+    print(f"[PORTABILITY] {title}")
+    print("-" * width)
+    print(f"  • 상태       : {color_status(status)}")
+    if reason:
+        print(f"  • 이유       : {reason}")
+
+    print("=" * width)
+
 
 def check(_driver, step: Dict[str, Any]):
     t = step["type"]
@@ -43,6 +86,8 @@ def check(_driver, step: Dict[str, Any]):
 # ---------------------------
 # Helpers
 # ---------------------------
+
+
 def _run_script(script_path: str):
     if not os.path.exists(script_path):
         return False, "script not found", "", ""
@@ -51,15 +96,19 @@ def _run_script(script_path: str):
         if os.name == "nt":
             # Windows: .bat/.cmd는 shell=True, 그 외는 그대로 시도
             if script_path.lower().endswith((".bat", ".cmd")):
-                result = subprocess.run(script_path, capture_output=True, text=True, shell=True)
+                result = subprocess.run(
+                    script_path, capture_output=True, text=True, shell=True)
             else:
-                result = subprocess.run([script_path], capture_output=True, text=True, shell=False)
+                result = subprocess.run(
+                    [script_path], capture_output=True, text=True, shell=False)
         else:
             # Unix: 실행권한 없으면 bash로 시도
             if os.access(script_path, os.X_OK):
-                result = subprocess.run([script_path], capture_output=True, text=True, shell=False)
+                result = subprocess.run(
+                    [script_path], capture_output=True, text=True, shell=False)
             else:
-                result = subprocess.run(["bash", script_path], capture_output=True, text=True, shell=False)
+                result = subprocess.run(
+                    ["bash", script_path], capture_output=True, text=True, shell=False)
 
         ok = (result.returncode == 0)
         return ok, f"return={result.returncode}", result.stdout, result.stderr
@@ -69,6 +118,8 @@ def _run_script(script_path: str):
 # ---------------------------
 # 환경적용성
 # ---------------------------
+
+
 def check_env_variable(step: Dict[str, Any]):
     key = step.get("env_key")
     set_value = step.get("set_value")
@@ -80,6 +131,7 @@ def check_env_variable(step: Dict[str, Any]):
     ok = (val == str(set_value))
     print_result("check_env_variable", ok, f"{key}={val}")
     return {"pass": ok, "key": key, "value": val}
+
 
 def check_multi_env(step: Dict[str, Any]):
     urls: List[str] = step.get("urls", [])
@@ -98,14 +150,17 @@ def check_multi_env(step: Dict[str, Any]):
     print_result("check_multi_env", ok, f"codes={codes}")
     return {"pass": ok, "codes": codes}
 
+
 def check_platform_matrix(step: Dict[str, Any]):
     os_name = platform.system()               # e.g., 'Windows', 'Linux', 'Darwin'
-    py_ver  = platform.python_version()       # e.g., '3.11.6'
+    py_ver = platform.python_version()       # e.g., '3.11.6'
     expected = step.get("expected", [])
+
     def match(item):
         os_expect = item.get("os")
         py_expect = item.get("python")  # '3.11'처럼 prefix 매칭
-        os_ok = (os_name == os_expect) if isinstance(os_expect, str) else (os_name in (os_expect or []))
+        os_ok = (os_name == os_expect) if isinstance(
+            os_expect, str) else (os_name in (os_expect or []))
         py_ok = str(py_ver).startswith(str(py_expect)) if py_expect else True
         return os_ok and py_ok
     ok = any(match(e) for e in expected) if expected else True
@@ -115,6 +170,8 @@ def check_platform_matrix(step: Dict[str, Any]):
 # ---------------------------
 # 설치용이성
 # ---------------------------
+
+
 def check_install_script(step: Dict[str, Any]):
     script = step.get("script")
     if not script:
@@ -124,6 +181,7 @@ def check_install_script(step: Dict[str, Any]):
     print_result("check_install_script", ok, info)
     return {"pass": ok, "stdout": stdout, "stderr": stderr, "info": info}
 
+
 def check_rollback(step: Dict[str, Any]):
     script = step.get("rollback_script")
     if not script:
@@ -132,6 +190,7 @@ def check_rollback(step: Dict[str, Any]):
     ok, info, stdout, stderr = _run_script(script)
     print_result("check_rollback", ok, info)
     return {"pass": ok, "stdout": stdout, "stderr": stderr, "info": info}
+
 
 def check_upgrade(step: Dict[str, Any]):
     old_ver = str(step.get("old_version", "")).strip()
@@ -146,12 +205,15 @@ def check_upgrade(step: Dict[str, Any]):
 # ---------------------------
 # 치환성
 # ---------------------------
+
+
 def check_service_replace(step: Dict[str, Any]):
     envs = step.get("environments", [])
     # 간이 규칙: 대체 후보가 2개 이상이면 일단 치환 가능성 OK
     ok = isinstance(envs, list) and len(envs) >= 2
     print_result("check_service_replace", ok, f"envs={envs}")
     return {"pass": ok, "envs": envs}
+
 
 def check_data_format(step: Dict[str, Any]):
     fmt = (step.get("format") or "json").lower()
@@ -202,9 +264,10 @@ def check_data_format(step: Dict[str, Any]):
     print_result("check_data_format", ok, f"format={fmt} ({reason})")
     return {"pass": ok, "format": fmt, "reason": reason}
 
+
 def check_functional_equal(step: Dict[str, Any]):
     base = step.get("base_result")
-    alt  = step.get("alt_result")
+    alt = step.get("alt_result")
     ok = (base == alt)
     print_result("check_functional_equal", ok, f"equal={ok}")
     return {"pass": ok, "equal": ok, "base": base, "alt": alt}

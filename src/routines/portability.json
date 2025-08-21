@@ -1,5 +1,5 @@
 {
-  "name": "이식성 검사 루틴",
+  "name": "[SW] Portability 이식성",
   "driver": "backend",
   "steps": [
     {

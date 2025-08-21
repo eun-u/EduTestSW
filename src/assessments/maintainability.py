@@ -24,12 +24,63 @@
 ================================================
 """
 from typing import Dict, Any, List, Tuple
-import os, re, json, subprocess, sys, ast, hashlib
+import os
+import re
+import json
+import subprocess
+import sys
+import ast
+import hashlib
 from pathlib import Path
+from colorama import Fore, Style
+
+
+def color_status(status: str) -> str:
+    if status == "PASS":
+        return Fore.GREEN + status + Style.RESET_ALL
+    elif status == "FAIL":
+        return Fore.RED + status + Style.RESET_ALL
+    elif status == "WARN":
+        return Fore.YELLOW + status + Style.RESET_ALL
+    elif status == "ERROR":
+        return Fore.MAGENTA + status + Style.RESET_ALL
+    return status or "N/A"
+
+
+TITLE_MAP = {
+    "check_log_level": "로그 레벨 정책 검증",
+    "check_log_trace_fields": "로그 trace 필드 검증",
+
+    "check_feature_flag": "피처 플래그 토글 검증",
+    "check_config_separation": "설정/코드 분리 검증",
+
+    "check_test_coverage": "테스트 커버리지 실행",
+    "check_smoke_script": "스모크 스크립트 실행",
+
+    "check_circular_imports": "순환 의존성 탐지",
+
+    "check_duplicate_functions": "중복 함수 탐지",
+
+    "check_cyclomatic_complexity": "순환 복잡도 분석",
+}
+
 
 def print_result(name: str, ok: bool, reason: str):
     status = "PASS" if ok else "FAIL"
-    print(f"[MAINTAINABILITY] {name:25s} [{status}] {reason}")
+    line_w = 70
+    title = TITLE_MAP.get(name, name)
+
+    print("\n" + "=" * line_w)
+    print(f"[MAINTAINABILITY] {title}")
+    print("-" * line_w)
+
+    print(f"  • 상태       : {color_status(status)}")
+
+    if reason:
+        print(f"  • 이유       : {reason}")
+
+    print("=" * line_w)
+
 
 def check(_driver, step: Dict[str, Any]):
     t = step["type"]
@@ -58,6 +109,8 @@ def check(_driver, step: Dict[str, Any]):
 # -------------------------------
 # 분석성
 # -------------------------------
+
+
 def check_log_level(step: Dict[str, Any]):
     log_path = step.get("log_path")
     allowed = set(step.get("allowed_levels", ["INFO", "WARN", "ERROR"]))
@@ -72,13 +125,17 @@ def check_log_level(step: Dict[str, Any]):
             m = pat.match(ln)
             if not m:
                 # 레벨 표기가 없다면 정책 위반으로 간주(옵션: step.get('allow_no_level'))
-                bad += 1; bad_lines.append((i, ln.strip())); continue
+                bad += 1
+                bad_lines.append((i, ln.strip()))
+                continue
             lvl = m.group(1).strip()
             if lvl not in allowed:
-                bad += 1; bad_lines.append((i, ln.strip()))
+                bad += 1
+                bad_lines.append((i, ln.strip()))
     ok = (bad == 0)
     print_result("check_log_level", ok, f"bad={bad}")
     return {"pass": ok, "bad_count": bad, "bad_lines": bad_lines[:20]}
+
 
 def check_log_trace_fields(step: Dict[str, Any]):
     """로그에 trace_id/request_id 등 필수 키가 포함되는지 샘플링 확인"""
@@ -92,12 +149,15 @@ def check_log_trace_fields(step: Dict[str, Any]):
         chunk = f.read(sample).decode("utf-8", errors="ignore")
     miss = [k for k in required if k not in chunk]
     ok = (len(miss) == 0)
-    print_result("check_log_trace_fields", ok, f"missing={miss}" if miss else "ok")
+    print_result("check_log_trace_fields", ok,
+                 f"missing={miss}" if miss else "ok")
     return {"pass": ok, "missing": miss}
 
 # -------------------------------
 # 수정가능성
 # -------------------------------
+
+
 def check_feature_flag(step: Dict[str, Any]):
     key = step.get("env_key")
     on_value = str(step.get("on_value", "ON"))
@@ -111,6 +171,7 @@ def check_feature_flag(step: Dict[str, Any]):
     print_result("check_feature_flag", ok, f"{key}={after} (before={before})")
     return {"pass": ok, "before": before, "after": after}
 
+
 def check_config_separation(step: Dict[str, Any]):
     key = step.get("env_key")
     expect = step.get("expect")
@@ -119,15 +180,19 @@ def check_config_separation(step: Dict[str, Any]):
         return {"pass": False, "reason": "missing env_key"}
     val = os.environ.get(key)
     ok = (val == expect)
-    print_result("check_config_separation", ok, f"{key}={val}, expect={expect}")
+    print_result("check_config_separation", ok,
+                 f"{key}={val}, expect={expect}")
     return {"pass": ok, "value": val}
 
 # -------------------------------
 # 시험가능성
 # -------------------------------
+
+
 def _which(cmd: str) -> bool:
     from shutil import which
     return which(cmd) is not None
+
 
 def check_test_coverage(step: Dict[str, Any]):
     """
@@ -150,18 +215,22 @@ def check_test_coverage(step: Dict[str, Any]):
             cov_pct = None
             try:
                 data = json.loads(r2.stdout or "{}")
-                cov_pct = float(data.get("totals", {}).get("percent_covered", 0.0))
+                cov_pct = float(data.get("totals", {}).get(
+                    "percent_covered", 0.0))
                 if cov and cov_pct is not None:
                     ok = ok and (cov_pct >= float(cov))
             except Exception:
                 pass
-            print_result("check_test_coverage", ok, f"pytest_rc={r1.returncode}, coverage={cov_pct}")
+            print_result("check_test_coverage", ok,
+                         f"pytest_rc={r1.returncode}, coverage={cov_pct}")
             return {"pass": ok, "pytest_rc": r1.returncode, "coverage": cov_pct,
                     "stdout": (r1.stdout + "\n" + r2.stdout)[-2000:], "stderr": (r1.stderr + "\n" + r2.stderr)[-2000:]}
         elif use_pytest_only:
-            r = subprocess.run(["pytest", "-q"], cwd=workdir, capture_output=True, text=True)
+            r = subprocess.run(["pytest", "-q"], cwd=workdir,
+                               capture_output=True, text=True)
             ok = (r.returncode == 0)
-            print_result("check_test_coverage", ok, f"pytest_rc={r.returncode} (coverage 미사용)")
+            print_result("check_test_coverage", ok,
+                         f"pytest_rc={r.returncode} (coverage 미사용)")
             return {"pass": ok, "pytest_rc": r.returncode, "stdout": r.stdout[-2000:], "stderr": r.stderr[-2000:]}
         else:
             print_result("check_test_coverage", False, "pytest/coverage 미설치")
@@ -170,12 +239,14 @@ def check_test_coverage(step: Dict[str, Any]):
         print_result("check_test_coverage", False, str(e))
         return {"pass": False, "reason": str(e)}
 
+
 def check_smoke_script(step: Dict[str, Any]):
     script = step.get("script")
     if not script or not os.path.exists(script):
         print_result("check_smoke_script", False, "script 없음")
         return {"pass": False, "reason": "missing script"}
-    r = subprocess.run([script], capture_output=True, text=True, shell=os.name=="nt" and script.lower().endswith((".bat",".cmd")))
+    r = subprocess.run([script], capture_output=True, text=True,
+                       shell=os.name == "nt" and script.lower().endswith((".bat", ".cmd")))
     ok = (r.returncode == 0)
     print_result("check_smoke_script", ok, f"return={r.returncode}")
     return {"pass": ok, "returncode": r.returncode, "stdout": r.stdout[-2000:], "stderr": r.stderr[-2000:]}
@@ -183,14 +254,18 @@ def check_smoke_script(step: Dict[str, Any]):
 # -------------------------------
 # 모듈성
 # -------------------------------
+
+
 def _iter_py_files(root: str) -> List[Path]:
     p = Path(root)
     return [x for x in p.rglob("*.py") if x.is_file() and ("venv" not in x.parts and ".venv" not in x.parts)]
+
 
 def check_circular_imports(step: Dict[str, Any]):
     src = step.get("src", "src")
     files = _iter_py_files(src)
     # module name = path relative to src without .py, with dots
+
     def mod_name(path: Path) -> str:
         rel = path.relative_to(src).with_suffix("")
         return ".".join(rel.parts)
@@ -207,7 +282,7 @@ def check_circular_imports(step: Dict[str, Any]):
                         top = n.name.split(".")[0]
                         # 전체 이름 중 우리 모듈 prefix와 맞는 것만 연결
                         for cand in modules:
-                            if cand == n.name or cand.startswith(n.name + ".") or n.name.startswith(cand + ".") or cand.split(".")[0]==top:
+                            if cand == n.name or cand.startswith(n.name + ".") or n.name.startswith(cand + ".") or cand.split(".")[0] == top:
                                 graph[m].add(cand)
                 elif isinstance(node, ast.ImportFrom):
                     if node.module:
@@ -219,10 +294,13 @@ def check_circular_imports(step: Dict[str, Any]):
     # detect cycles (DFS)
     visited, stack = set(), set()
     cycles: List[List[str]] = []
+
     def dfs(u: str, path: List[str]):
-        visited.add(u); stack.add(u); path.append(u)
+        visited.add(u)
+        stack.add(u)
+        path.append(u)
         for v in graph.get(u, []):
-            if v not in modules: 
+            if v not in modules:
                 continue
             if v not in visited:
                 dfs(v, path)
@@ -233,7 +311,8 @@ def check_circular_imports(step: Dict[str, Any]):
                     cyc = path[idx:] + [v]
                     if cyc not in cycles:
                         cycles.append(cyc)
-        path.pop(); stack.discard(u)
+        path.pop()
+        stack.discard(u)
     for m in list(graph.keys()):
         if m not in visited:
             dfs(m, [])
@@ -244,8 +323,11 @@ def check_circular_imports(step: Dict[str, Any]):
 # -------------------------------
 # 재사용성
 # -------------------------------
+
+
 def _hash_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
 
 def check_duplicate_functions(step: Dict[str, Any]):
     src = step.get("src", "src")
@@ -264,7 +346,8 @@ def check_duplicate_functions(step: Dict[str, Any]):
                 if len(norm) < min_len:
                     continue
                 h = _hash_text(norm)
-                funcs.setdefault(h, []).append((str(f), node.name, node.lineno, node.end_lineno))
+                funcs.setdefault(h, []).append(
+                    (str(f), node.name, node.lineno, node.end_lineno))
         except Exception:
             pass
     dups = {h: v for h, v in funcs.items() if len(v) > 1}
@@ -281,6 +364,8 @@ def check_duplicate_functions(step: Dict[str, Any]):
 # -------------------------------
 # 선택: 복잡도 (radon)
 # -------------------------------
+
+
 def check_cyclomatic_complexity(step: Dict[str, Any]):
     """
     radon cc -s -j <path>
@@ -294,27 +379,34 @@ def check_cyclomatic_complexity(step: Dict[str, Any]):
         print_result("check_cyclomatic_complexity", False, "radon 미설치")
         return {"pass": False, "reason": "radon not available"}
 
-    r = subprocess.run(["radon", "cc", "-s", "-j", path], capture_output=True, text=True)
+    r = subprocess.run(["radon", "cc", "-s", "-j", path],
+                       capture_output=True, text=True)
     if r.returncode != 0:
-        print_result("check_cyclomatic_complexity", False, f"radon rc={r.returncode}")
+        print_result("check_cyclomatic_complexity",
+                     False, f"radon rc={r.returncode}")
         return {"pass": False, "reason": "radon failed", "stderr": r.stderr[-1000:]}
     try:
-        data = json.loads(r.stdout or "{}")  # {file: [{complexity: int, ...}, ...]}
+        # {file: [{complexity: int, ...}, ...]}
+        data = json.loads(r.stdout or "{}")
         counts, total = 0, 0
         worst = 0
         for v in data.values():
             for item in v:
                 c = int(item.get("complexity", 0))
-                total += c; counts += 1
+                total += c
+                counts += 1
                 worst = max(worst, c)
         avg = (total / counts) if counts else 0.0
         ok = True
         reasons = []
         if max_avg is not None and avg > float(max_avg):
-            ok = False; reasons.append(f"avg {avg:.2f}>{float(max_avg)}")
+            ok = False
+            reasons.append(f"avg {avg:.2f}>{float(max_avg)}")
         if max_any is not None and worst > int(max_any):
-            ok = False; reasons.append(f"worst {worst}>{int(max_any)}")
-        print_result("check_cyclomatic_complexity", ok, f"avg={avg:.2f}, worst={worst}" + ("" if not reasons else f" ({', '.join(reasons)})"))
+            ok = False
+            reasons.append(f"worst {worst}>{int(max_any)}")
+        print_result("check_cyclomatic_complexity", ok, f"avg={avg:.2f}, worst={worst}" + (
+            "" if not reasons else f" ({', '.join(reasons)})"))
         return {"pass": ok, "avg": avg, "worst": worst, "files": list(data.keys())[:20]}
     except Exception as e:
         print_result("check_cyclomatic_complexity", False, str(e))
