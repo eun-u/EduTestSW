@@ -51,8 +51,8 @@ EduTestSW/
 │   ├── core/              # 파서, 드라이버, 러너
 │   └── routines/          # JSON 테스트 시나리오
 ├── requirements.txt       # 의존성 패키지
-└── README.md              # 프로젝트 설명 문서
-'''
+└── README.md              # 프로젝트 설명 문서```
+
 
 ---
 
