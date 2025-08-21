@@ -1,5 +1,5 @@
 {
-  "name": "신뢰성 검사 - 로컬 부하 & 복구 (리소스 모니터 포함)",
+  "name": "[SW] Reliability 신뢰성",
   "driver": "backend",
   "steps": [
     {

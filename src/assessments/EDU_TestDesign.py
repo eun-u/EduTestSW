@@ -27,6 +27,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from collections import Counter, defaultdict
 import math
 import re
+from colorama import Fore, Style
 
 try:
     # 선택: LLM 보조 사용
@@ -102,6 +103,18 @@ def print_result(name: str, ok: bool, reason: str = ""):
         print(f"[TEST_DESIGN] {name:28s} [{status}]")
 
 
+def color_status(status: str) -> str:
+    if status == "PASS":
+        return Fore.GREEN + status + Style.RESET_ALL
+    elif status == "FAIL":
+        return Fore.RED + status + Style.RESET_ALL
+    elif status == "WARN":
+        return Fore.YELLOW + status + Style.RESET_ALL
+    elif status == "ERROR":
+        return Fore.MAGENTA + status + Style.RESET_ALL
+    return status or "N/A"
+
+
 def print_test_result(result: Dict[str, Any]):
     """
     일관된 PASS/WARN/FAIL와 핵심 지표를 간단 출력
@@ -125,7 +138,7 @@ def print_test_result(result: Dict[str, Any]):
 def brief_explain(res: Dict[str, Any]) -> str:
     name = res.get("name")
     st = res.get("status")
-    if name == "blueprint_presence":
+    if name == "출제 기준 존재/형식 점검":
         fail = res.get("fail", 0)
         warn = res.get("warn", 0)
         if st == "pass":
@@ -137,7 +150,7 @@ def brief_explain(res: Dict[str, Any]) -> str:
             parts.append(f"길이부족 {warn}건")
         return "출제기준 보완 필요 (" + ", ".join(parts) + ")."
 
-    elif name == "difficulty_balance":
+    elif name == "난이도 분포 적절성":
         issues = res.get("issues") or []
         skew_issue = next(
             (i for i in issues if i.get("issue") == "SKEW_HIGH"), None)
@@ -147,12 +160,12 @@ def brief_explain(res: Dict[str, Any]) -> str:
             return f"{skew_issue.get('top_label')} 난이도가 {skew_issue.get('skew')}로 치우쳤습니다."
         return "난이도 라벨 누락 항목이 있어 확인이 필요합니다."
 
-    elif name == "objective_type_alignment":
+    elif name == "평가목표-문항유형 정합성":
         if st == "pass":
             return "평가목표와 문항유형의 매핑이 적절합니다."
         return f"허용되지 않는 유형 매핑 {res.get('bad', 0)}건이 확인되었습니다."
 
-    elif name == "rubric_quality":
+    elif name == "채점 기준(루브릭) 명확성":
         if st == "pass":
             return "주관식/서술형의 채점기준이 구체적입니다."
         weak = sum(1 for d in (res.get("details") or [])
@@ -166,7 +179,7 @@ def brief_explain(res: Dict[str, Any]) -> str:
             parts.append(f"누락 {missing}건")
         return "채점기준 보완 필요 (" + (", ".join(parts) or "세부 기준 점검") + ")."
 
-    elif name == "autograde_accuracy":
+    elif name == "자동 채점 정확도":
         acc = res.get("accuracy", {})
         bad_types = [
             k for k, v in acc.items()
@@ -180,37 +193,68 @@ def brief_explain(res: Dict[str, Any]) -> str:
 
 
 def print_step_result(res: Dict[str, Any]) -> None:
-    """각 함수 내부에서 즉시 호출되는 단일 스텝 요약 출력기 + 짧은 설명."""
     name = res.get("name", "(unknown)")
-    st = res.get("status", "pass").upper()
-    line = f"[TEST_DESIGN][STEP] {name:24s} [{st}]"
+    status = (res.get("status", "pass") or "pass").upper()
 
-    # 공통 메트릭 추가
-    if "coverage" in res:
-        line += f" coverage={res['coverage']}"
-    if "entropy_norm" in res:
-        line += f" entropy_norm={res['entropy_norm']}"
-    if "max_skew" in res:
-        line += f" max_skew={res['max_skew']}"
-    if "align_rate" in res:
-        line += f" align_rate={res['align_rate']}"
-    if "accuracy" in res:
-        line += f" accuracy={res['accuracy']}"
+    detail_keys: List[str] = [
+        "coverage",
+        "entropy_norm",
+        "max_skew",
+        "align_rate",
+        "accuracy",
+    ]
+    details: Dict[str, Any] = {k: res[k] for k in detail_keys if k in res}
 
-    print(line)
+    evidence: List[str] = []
 
-    # 대표 이슈/디테일 샘플
-    if "details" in res and res["details"]:
-        print(f"    details(sample): {res['details'][:3]}")
-    if "issues" in res and res["issues"]:
-        print(f"    issues(sample): {res['issues'][:3]}")
-    if "mismatches" in res and res["mismatches"]:
-        print(f"    mismatches(sample): {res['mismatches'][:3]}")
+    try:
+        note = brief_explain(res)
+        if note:
+            evidence.append(f"note: {note}")
+    except NameError:
+        if res.get("note"):
+            evidence.append(f"note: {res['note']}")
 
-    note = brief_explain(res)
-    if note:
-        print(f"    note: {note}")
-        print()
+    def sample(obj: Any, n: int = 3) -> str:
+        if isinstance(obj, list):
+            return str(obj[:n])
+        if isinstance(obj, dict):
+            return str(list(obj.items())[:n])
+        s = str(obj)
+        return s if len(s) <= 300 else s[:300]
+
+    if res.get("details"):
+        evidence.append(f"details(sample): {sample(res['details'])}")
+    if res.get("issues"):
+        evidence.append(f"issues(sample): {sample(res['issues'])}")
+    if res.get("mismatches"):
+        evidence.append(f"mismatches(sample): {sample(res['mismatches'])}")
+
+    line_w = 70
+    print("\n" + "=" * line_w)
+    print(f"[TEST_DESIGN] {name}")
+    print("-" * line_w)
+
+    try:
+        colored = color_status(status)
+    except NameError:
+        colored = status
+    print(f"  • 상태       : {colored}")
+
+    if res.get("error"):
+        print(f"  • 오류       : {res['error']}")
+
+    if details:
+        print("  • 상세")
+        for k, v in details.items():
+            print(f"     - {k:<15}: {v}")
+
+    if evidence:
+        print("  • 근거")
+        for e in evidence:
+            print(f"     - {e}")
+
+    print("=" * line_w)
 
 
 def tokenize(text: str) -> List[str]:
@@ -279,7 +323,7 @@ def blueprint_presence(step: Dict[str, Any]) -> Dict[str, Any]:
     coverage = round(ok / max(1, len(items)), 3)
     status = "pass" if fail == 0 and warn == 0 else (
         "warn" if fail == 0 else "fail")
-    res = {"name": "blueprint_presence", "status": status, "coverage": coverage,
+    res = {"name": "출제 기준 존재/형식 점검", "status": status, "coverage": coverage,
            "ok": ok, "warn": warn, "fail": fail, "details": details[:30]}
     print_step_result(res)
     return res
@@ -367,7 +411,7 @@ def difficulty_balance(step: Dict[str, Any]) -> Dict[str, Any]:
             missing_ids), "ids": missing_ids[:10]})
 
     res = {
-        "name": "difficulty_balance",
+        "name": "난이도 분포 적절성",
         "status": status,
         "counts": dict(counts),
         "entropy_norm": ent,
@@ -435,7 +479,7 @@ def objective_type_alignment(step: Dict[str, Any]) -> Dict[str, Any]:
     total_pairs = ok + bad
     align_rate = round(ok / max(1, total_pairs), 3)
     status = "pass" if bad == 0 else ("warn" if align_rate >= 0.9 else "fail")
-    res = {"name": "objective_type_alignment", "status": status,
+    res = {"name": "평가목표-문항유형 정합성", "status": status,
            "align_rate": align_rate, "ok": ok, "bad": bad, "mismatches": mismatches[:30]}
     print_step_result(res)
     return res
@@ -479,7 +523,7 @@ def rubric_quality(step: Dict[str, Any]) -> Dict[str, Any]:
     coverage = round(ok / max(1, applicable), 3)
     status = "pass" if fail == 0 and warn == 0 else (
         "warn" if fail == 0 else "fail")
-    res = {"name": "rubric_quality", "status": status, "coverage": coverage,
+    res = {"name": "채점 기준(루브릭) 명확성", "status": status, "coverage": coverage,
            "ok": ok, "warn": warn, "fail": fail, "details": details[:30]}
     print_step_result(res)
     return res
@@ -540,7 +584,7 @@ def autograde_accuracy(step: Dict[str, Any]) -> Dict[str, Any]:
     if metrics.get("객관식", 1.0) < 0.95 or metrics.get("단답형", 1.0) < 0.80 or metrics.get("서술형", 1.0) < 0.80:
         status = "warn"
 
-    res = {"name": "autograde_accuracy", "status": status,
+    res = {"name": "자동 채점 정확도", "status": status,
            "accuracy": metrics, "samples": sample_errors}
     print_step_result(res)
     return res

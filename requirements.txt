@@ -32,3 +32,7 @@ selenium
 
 #mock server
 flask
+
+# 출력 가독성 위함
+tabulate
+wcwidth

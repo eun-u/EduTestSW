@@ -1,6 +1,6 @@
 [
     {
-        "name": "온라인 강의 호환성 테스트",
+        "name": "[EDU] Compatibility 온라인 강의 호환성 테스트",
         "driver": "playwright",
         "steps": [
             {

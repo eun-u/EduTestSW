@@ -1,6 +1,6 @@
 [
     {
-        "name": "사용성 테스트",
+        "name": "[SW] Usability 사용성",
         "driver": "playwright",
         "steps": [
             {

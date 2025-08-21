@@ -27,6 +27,7 @@ import requests
 import time
 import statistics
 import math
+from colorama import Fore, Style
 
 
 # ---------------------------------------------------------------------
@@ -105,20 +106,43 @@ def judge(stats: Dict[str, float], threshold_s: float, rule: str = "p95<=thresho
     return ok, reason
 
 
-def print_report(results: Dict[str, Any]):
-    print("\n[PERFORMANCE > 응답시간 리포트]")
-    for name, data in results.items():
-        stats = data["stats"]
-        print(f"\n기능: {name}")
-        print(f"  - 측정 횟수 : {stats['count']}")
-        print(f"  - 평균 시간 : {stats['avg']:.4f}s")
-        print(f"  - 90% 구간 최대값(p90) : {stats['p90']:.4f}s")
-        print(f"  - 95% 구간 최대값(p95) : {stats['p95']:.4f}s")
-        print(f"  - 99% 구간 최대값(p99) : {stats['p99']:.4f}s")
-        print(f"  - 최소 / 최대 : {stats['min']:.4f}s / {stats['max']:.4f}s")
-        print(f"  - 기준값(rule) : {data['rule']} / {data['threshold']:.4f}s")
-        print(
-            f"  => 판정 : {'PASS' if data['pass'] else 'FAIL'} ({data['reason']})")
+# ---------------------------------------------------------------------
+# 출력 포맷 유틸 (다른 모듈과 통일)
+# ---------------------------------------------------------------------
+def color_status(status: str) -> str:
+    if status == "PASS":
+        return Fore.GREEN + status + Style.RESET_ALL
+    elif status == "FAIL":
+        return Fore.RED + status + Style.RESET_ALL
+    elif status == "WARN":
+        return Fore.YELLOW + status + Style.RESET_ALL
+    elif status == "ERROR":
+        return Fore.MAGENTA + status + Style.RESET_ALL
+    return status or "N/A"
+
+
+def print_block(tag: str,
+                title: str,
+                status: str,
+                reason: Optional[str] = None,
+                details: Optional[Dict[str, Any]] = None,
+                evidence: Optional[List[str]] = None,
+                width: int = 70) -> None:
+    print("\n" + "=" * width)
+    print(f"[{tag}] {title}")
+    print("-" * width)
+    print(f"  • 상태       : {color_status(status)}")
+    if reason:
+        print(f"  • 이유       : {reason}")
+    if details:
+        print("  • 상세")
+        for k, v in details.items():
+            print(f"     - {k:<15}: {v}")
+    if evidence:
+        print("  • 근거")
+        for e in evidence:
+            print(f"     - {e}")
+    print("=" * width)
 
 
 # ---------------------------------------------------------------------
@@ -170,6 +194,8 @@ def report_response_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
     """
     주요 기능들의 응답 시간을 측정하는 함수
     """
+    emit = bool(step.get("emit", True))
+
     mode = step.get("mode")
     if not mode:
         is_playwright = (driver is not None and hasattr(driver, "page"))
@@ -271,7 +297,25 @@ def report_response_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
             "samples": samples
         }
 
-    print_report(results)
+        if emit:
+            status = "PASS" if ok else "FAIL"
+            details = {
+                "count": stats["count"],
+                "avg": f"{stats['avg']:.4f}s",
+                "p90": f"{stats['p90']:.4f}s",
+                "p95": f"{stats['p95']:.4f}s",
+                "p99": f"{stats['p99']:.4f}s",
+                "min": f"{stats['min']:.4f}s",
+                "max": f"{stats['max']:.4f}s",
+                "rule": rule,
+                "threshold": ("None" if thr is None else f"{thr:.4f}s"),
+            }
+            ev = None
+            if samples:
+                ev = [f"samples(top3): {[round(x, 4) for x in samples[:3]]}"]
+            print_block("PERFORMANCE", f"주요 기능 응답 시간 측정: {name}", status, reason=reason,
+                        details=details, evidence=ev)
+
     return results
 
 
@@ -308,7 +352,8 @@ def compare_processing_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
     # 결과 확보
     base_results = step.get("results")
     if not base_results:
-        base_results = report_response_time(step, driver)
+        inner_step = {**step, "emit": False}
+        base_results = report_response_time(inner_step, driver)
 
     # 기능별 통계 추출
     features: List[str] = []
@@ -410,19 +455,29 @@ def compare_processing_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
             pass
 
     # 리포트 출력
-    print("\n[PERFORMANCE > 기능별 처리시간 비교/이상 탐지]")
-    print(f"  - 기준 metric: {metric}")
-    print(f"  - 중앙값(median): {med:.6f}s")
-    if not math.isinf(denom):
-        print(f"  - 강건 z 보정분모(MAD*1.4826): {denom:.6f}")
-    print("----------------------------------------------------------------")
+    any_anom = any(is_anomaly)
+    status = "WARN" if any_anom else "PASS"
+    details = {
+        "metric": metric,
+        "median": f"{med:.6f}s",
+        "robust_denom": ("inf" if math.isinf(denom) else f"{denom:.6f}"),
+        "anomaly_method": method,
+        "z_thresh": z_thresh,
+        "factor_baseline": factor_baseline,
+        "min_samples": min_samples,
+    }
+    ev: List[str] = []
     for i in range(len(features)):
         flag = "ANOMALY" if is_anomaly[i] else "OK"
-        print(f"{features[i]:<30s} {values[i]:>10.6f}s  "
-              f"(count={counts[i]:>2d})  [{flag}]  reason={reasons[i]}  score={score[i]:+.3f}")
+        ev.append(
+            f"{features[i]:<18} {values[i]:>10.6f}s  (n={counts[i]:>2d})  "
+            f"[{flag}]  reason={reasons[i]}  z={score[i]:+.3f}"
+        )
 
-    # 반환 오브젝트
-    out = {
+    print_block("PERFORMANCE", "기능별 처리시간 비교/이상 탐지",
+                status, details=details, evidence=ev)
+
+    return {
         "metric": metric,
         "median": med,
         "robust_denom": denom,
@@ -438,7 +493,6 @@ def compare_processing_time(step: Dict[str, Any], driver) -> Dict[str, Any]:
             for i in range(len(features))
         ]
     }
-    return out
 
 
 # ---------------------------------------------------------------------
@@ -461,7 +515,8 @@ def warn_timeout(step: Dict[str, Any], driver) -> Dict[str, Any]:
     # 결과 확보
     base_results = step.get("results")
     if not base_results:
-        base_results = report_response_time(step, driver)
+        inner_step = {**step, "emit": False}
+        base_results = report_response_time(inner_step, driver)
 
     if not isinstance(base_results, dict):
         raise ValueError("[PERFORMANCE > TIMEOUT] 유효한 results가 아닙니다.")
@@ -515,17 +570,24 @@ def warn_timeout(step: Dict[str, Any], driver) -> Dict[str, Any]:
             "reason": f"{percent_over:.1f}%≥{percent_limit:.1f}% → {'WARN' if warn else 'OK'}"
         })
 
-    # 출력
-    print("\n[PERFORMANCE > 시간 초과 경고 탐지]")
-    print(f"  - 기준 초과 경고 임계치: {percent_limit:.1f}%")
-    print("----------------------------------------------------------------")
+    any_warn = any(r["warn"] for r in rows)
+    status = "WARN" if any_warn else "PASS"
+    details = {
+        "percent_limit": f"{percent_limit:.1f}%",
+        "metric": metric,
+    }
+    ev = []
     for r in rows:
         flag = "WARN" if r["warn"] else "OK"
         thr_str = "None" if r["threshold"] is None else f"{r['threshold']:.3f}s"
-        print(f"{r['feature']:<30s} "
-              f"{r['metric_value']:>10.6f}s  "
-              f"(count={r['count']:>2d}, over={r['over_count']:>2d}, {r['percent_over']:>5.1f}%)  "
-              f"[{flag}]  thr={thr_str}  {r['reason']}")
+        ev.append(
+            f"{r['feature']:<18} {r['metric_value']:>10.6f}s  "
+            f"(count={r['count']:>2d}, over={r['over_count']:>2d}, {r['percent_over']:>5.1f}%)  "
+            f"[{flag}]  thr={thr_str}  {r['reason']}"
+        )
+
+    print_block("PERFORMANCE", "시간 초과 경고 탐지",
+                status, details=details, evidence=ev)
 
     return {
         "percent_limit": percent_limit,

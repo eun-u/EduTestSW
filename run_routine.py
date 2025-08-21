@@ -1,3 +1,5 @@
+from src.core.driver_backend import BackendDriver
+from src.core.runner import run_routine
 import os
 import sys
 import time
@@ -6,16 +8,17 @@ import requests
 import argparse
 import json
 from typing import List, Dict, Any
+from tabulate import tabulate
+from wcwidth import wcswidth
 
 # src 모듈 경로 추가
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "src"))
 
-from core.runner import run_routine
-from core.driver_backend import BackendDriver
 
 # Playwright 드라이버는 선택적 임포트
 try:
-    from core.driver_playwright import PlaywrightDriver
+    from src.core.driver_playwright import PlaywrightDriver
     HAS_PLAYWRIGHT = True
 except Exception:
     PlaywrightDriver = None  # type: ignore
@@ -30,9 +33,11 @@ def list_json_files(base_dir: str = "src/routines") -> List[str]:
                 paths.append(os.path.join(root, f))
     return sorted(paths)
 
+
 def parse_routine(file_path: str) -> Any:
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def normalize_routines(obj: Any) -> List[Dict[str, Any]]:
     if obj is None:
@@ -47,7 +52,8 @@ def normalize_routines(obj: Any) -> List[Dict[str, Any]]:
             if not isinstance(item, dict) or "steps" not in item:
                 continue
             if "driver" not in item:
-                is_performance = any(s.get("assessment") == "performance" for s in item.get("steps", []))
+                is_performance = any(
+                    s.get("assessment") == "performance" for s in item.get("steps", []))
                 drv = "playwright" if is_performance else "backend"
                 item["driver"] = drv
             out.append(item)
@@ -98,18 +104,44 @@ def wait_health(url: str = "http://127.0.0.1:8000/health", timeout: int = 15) ->
 # -------------------------------
 # 선택/필터 유틸
 # -------------------------------
-def summarize_routine(idx: int, r: Dict[str, Any]) -> str:
+def pad_display(s: str, width: int) -> str:
+    """문자열 s를 실제 표시폭 기준으로 padding"""
+    disp = wcswidth(s)
+    pad = width - disp
+    return s + (" " * max(0, pad))
+
+
+def summarize_routine(idx: int, r: Dict[str, Any]) -> List[str]:
     drv = r.get("driver", "") or "(auto)"
     name = r.get("name", "(noname)")
-    kinds = [s.get("assessment") for s in r.get("steps", []) if isinstance(s, dict)][:3]
+    kinds = [s.get("assessment")
+             for s in r.get("steps", []) if isinstance(s, dict)][:3]
     kinds_s = ",".join([k for k in kinds if k]) or "-"
-    return f"[{idx}] {name} | driver={drv} | assessments={kinds_s} | src={os.path.basename(r.get('_source','-'))}"
+    src = os.path.basename(r.get("_source", "-"))
+    return [str(idx), name, drv, kinds_s, src]
 
 
 def print_routine_table(routines: List[Dict[str, Any]]) -> None:
+    headers = ["번호", "이름", "드라이버", "Assessments", "소스"]
+
+    col_widths = [0] * len(headers)
+    for i, h in enumerate(headers):
+        col_widths[i] = max(col_widths[i], wcswidth(h))
+    for i, r in enumerate(routines, start=1):
+        row = summarize_routine(i, r)
+        for j, cell in enumerate(row):
+            col_widths[j] = max(col_widths[j], wcswidth(cell))
+
+    table_rows: List[List[str]] = []
+    for i, r in enumerate(routines, start=1):
+        row = summarize_routine(i, r)
+        padded = [pad_display(cell, col_widths[j])
+                  for j, cell in enumerate(row)]
+        table_rows.append(padded)
+
     print("\n=== 실행 가능한 루틴 목록 ===")
-    for i, r in enumerate(routines, 1):
-        print(summarize_routine(i, r))
+    print(tabulate(table_rows, headers=headers,
+          tablefmt="grid", disable_numparse=True))
     print("============================\n")
 
 
@@ -140,13 +172,19 @@ def filter_by_keyword(routines: List[Dict[str, Any]], keyword: str) -> List[Dict
     out: List[Dict[str, Any]] = []
     for r in routines:
         if kw in (r.get("name", "") or "").lower():
-            out.append(r); continue
+            out.append(r)
+            continue
         if kw in (r.get("_source", "") or "").lower():
-            out.append(r); continue
+            out.append(r)
+            continue
         for s in r.get("steps", []):
             if isinstance(s, dict):
-                if kw in (s.get("url", "") or "").lower(): out.append(r); break
-                if kw in (s.get("assessment", "") or "").lower(): out.append(r); break
+                if kw in (s.get("url", "") or "").lower():
+                    out.append(r)
+                    break
+                if kw in (s.get("assessment", "") or "").lower():
+                    out.append(r)
+                    break
     return out
 
 
@@ -154,7 +192,8 @@ def filter_by_assessment(routines: List[Dict[str, Any]], kinds: List[str]) -> Li
     want = set(k.strip().lower() for k in kinds if k.strip())
     out: List[Dict[str, Any]] = []
     for r in routines:
-        kinds_in = {(s.get("assessment", "") or "").lower() for s in r.get("steps", []) if isinstance(s, dict)}
+        kinds_in = {(s.get("assessment", "") or "").lower()
+                    for s in r.get("steps", []) if isinstance(s, dict)}
         if kinds_in & want:
             out.append(r)
     return out
@@ -193,7 +232,8 @@ def select_routines_interactive(all_target: List[Dict[str, Any]]) -> List[Dict[s
             return picked
 
         if sel == "t":
-            kinds = input("assessment 타입들 (예: functional,reliability): ").strip().split(",")
+            kinds = input(
+                "assessment 타입들 (예: functional,reliability): ").strip().split(",")
             picked = filter_by_assessment(all_target, kinds)
             if not picked:
                 print("[INFO] 타입 매칭 결과가 없습니다. 전체 실행으로 대체합니다.")
@@ -237,7 +277,8 @@ def select_routines_cli(all_target: List[Dict[str, Any]], args: argparse.Namespa
 # 메인
 # -------------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run routines with driver/test selection.")
+    parser = argparse.ArgumentParser(
+        description="Run routines with driver/test selection.")
     parser.add_argument("--run", choices=["all"], help="모든 테스트 실행")
     parser.add_argument("--pick", help="번호로 선택 (예: '1,3-5')")
     parser.add_argument("--filter", help="키워드 필터")
@@ -255,7 +296,8 @@ if __name__ == "__main__":
         print("1. BackendDriver (가상 드라이버 - 콘솔 출력)")
         if HAS_PLAYWRIGHT:
             print("2. PlaywrightDriver (실제 웹 브라우저 제어)")
-        choice = input("선택 (1" + (" 또는 2" if HAS_PLAYWRIGHT else "") + "): ").strip()
+        choice = input(
+            "선택 (1" + (" 또는 2" if HAS_PLAYWRIGHT else "") + "): ").strip()
 
         if choice == "2" and HAS_PLAYWRIGHT:
             driver = PlaywrightDriver()
@@ -266,7 +308,8 @@ if __name__ == "__main__":
             selected_driver = "backend"
             print("BackendDriver를 선택했습니다.")
 
-        all_target = [r for r in routines if r.get("driver", "").lower() in ("", selected_driver)]
+        all_target = [r for r in routines if r.get(
+            "driver", "").lower() in ("", selected_driver)]
         print(f"[INFO] '{selected_driver}' 대상 루틴: {len(all_target)}개")
         if not all_target:
             print("[INFO] 실행 가능한 루틴이 없습니다. 종료합니다.")
